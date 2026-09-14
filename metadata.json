@@ -1,0 +1,6 @@
+{
+  "name": "Sonu Printer - Print Shop & E-Mitra Portal",
+  "description": "Online print ordering portal and full-featured print shop management system for Sonu Printer, Merta City, Rajasthan.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
