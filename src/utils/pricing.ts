@@ -8,6 +8,37 @@ import {
   PricingRule,
   PrintStyle,
 } from '../types';
+import { parseAndValidatePdfPageRange } from './pdfReader';
+
+export interface PdfPricingConfig {
+  pdf: {
+    a4: {
+      bw: {
+        singleSided: number;
+        backToBack: number;
+      };
+      color: {
+        singleSided: number;
+        backToBack: number;
+      };
+    };
+  };
+}
+
+export const DEFAULT_PDF_PRICING: PdfPricingConfig = {
+  pdf: {
+    a4: {
+      bw: {
+        singleSided: 3.0,
+        backToBack: 3.0,
+      },
+      color: {
+        singleSided: 8.0,
+        backToBack: 6.5,
+      },
+    },
+  },
+};
 
 export const DEFAULT_PRICING_RULES: PricingRule[] = [
   {
@@ -214,34 +245,159 @@ export function findRatePerPage(
 }
 
 /**
+ * Centralized pricing calculation function specifically for PDF workflow
+ * Returns exact printable pages, physical sheets, rates, and subtotal.
+ */
+export function calculatePdfPrice(
+  doc: {
+    pageCount?: number;
+    pagesCount?: number;
+    pageRange?: string;
+    copies?: number;
+    colorMode?: ColorMode;
+    printStyle?: PrintStyle;
+    paperSize?: PaperSize;
+  },
+  pricingRules: PricingRule[] = DEFAULT_PRICING_RULES,
+  pdfPricing: PdfPricingConfig = DEFAULT_PDF_PRICING
+): {
+  printablePages: number;
+  selectedPages: number[];
+  sheetsCount: number;
+  ratePerPage: number;
+  subtotal: number;
+  totalPrice: number;
+} {
+  const pageCount = Math.max(1, Number(doc.pageCount || (doc as any).pagesCount || 1));
+  const pageRange = doc.pageRange || 'all';
+  const rangeValidation = parseAndValidatePdfPageRange(pageRange, pageCount);
+  const printablePages = Math.max(1, rangeValidation.isValid ? rangeValidation.selectedCount : pageCount);
+  const copies = Math.max(1, Number(doc.copies || 1));
+
+  const rawColor = String(doc.colorMode || '').toLowerCase();
+  const isColor = rawColor === 'colour' || rawColor === 'color';
+  const normColorMode: ColorMode = isColor ? 'Colour' : 'B&W';
+
+  const rawStyle = String(doc.printStyle || '').toLowerCase();
+  const isDuplex = rawStyle.includes('back') || rawStyle.includes('duplex');
+  const normPrintStyle: PrintStyle = isDuplex ? 'Back-to-Back' : 'Single Sided';
+
+  const normPaperSize: PaperSize = doc.paperSize === 'A3' ? 'A3' : 'A4';
+
+  // Read rate from pricingRules (if available) or fallback to pdfPricing structure
+  const ruleMatch = pricingRules.find(
+    (r) =>
+      r.paperSize === normPaperSize &&
+      r.colorMode === normColorMode &&
+      r.printStyle === normPrintStyle
+  );
+
+  let ratePerPage: number;
+  if (ruleMatch && typeof ruleMatch.ratePerPage === 'number') {
+    ratePerPage = ruleMatch.ratePerPage;
+  } else {
+    if (!isColor) {
+      ratePerPage = isDuplex
+        ? pdfPricing.pdf.a4.bw.backToBack
+        : pdfPricing.pdf.a4.bw.singleSided;
+    } else {
+      ratePerPage = isDuplex
+        ? pdfPricing.pdf.a4.color.backToBack
+        : pdfPricing.pdf.a4.color.singleSided;
+    }
+  }
+
+  if (!Number.isFinite(ratePerPage) || ratePerPage <= 0) {
+    ratePerPage = isColor ? 8.0 : 3.0;
+  }
+
+  // Physical sheets calculation:
+  // Single Sided: 10 pages * 1 copy = 10 sheets
+  // Back-to-Back: 10 pages * 1 copy = 5 sheets
+  // Odd pages rounded up: 5 pages, Back-to-Back, 1 copy = 3 sheets
+  // Multiple copies: 5 pages, Back-to-Back, 2 copies = 10 printed sides = 5 physical sheets
+  const totalPrintedSides = printablePages * copies;
+  const sheetsCount = isDuplex
+    ? Math.max(1, Math.ceil(totalPrintedSides / 2))
+    : Math.max(1, totalPrintedSides);
+
+  const subtotal = Number((ratePerPage * printablePages * copies).toFixed(2)) || 0;
+
+  return {
+    printablePages,
+    selectedPages: rangeValidation.selectedPages?.length ? rangeValidation.selectedPages : [1],
+    sheetsCount,
+    ratePerPage,
+    subtotal,
+    totalPrice: subtotal,
+  };
+}
+
+/**
  * Calculates single document total price
  */
 export function calculateDocumentPricing(
   doc: {
-    pageCount: number;
-    pageRange: string;
-    copies: number;
-    paperSize: PaperSize;
-    colorMode: ColorMode;
-    printStyle: PrintStyle;
-    paperType: PaperType;
-    photoCollage: PhotoCollage;
+    pageCount?: number;
+    pagesCount?: number;
+    pageRange?: string;
+    copies?: number;
+    paperSize?: PaperSize;
+    colorMode?: ColorMode;
+    printStyle?: PrintStyle;
+    paperType?: PaperType;
+    photoCollage?: PhotoCollage;
+    fileType?: string;
+    type?: string;
   },
   pricingRules: PricingRule[] = DEFAULT_PRICING_RULES
 ): { printablePages: number; sheetsCount: number; ratePerPage: number; totalPrice: number } {
-  const printablePages = calculatePrintablePages(doc.pageRange, doc.pageCount);
-  const sheetsCount = calculateSheets(printablePages, doc.printStyle, doc.photoCollage);
-  const ratePerPage = findRatePerPage(
-    doc.paperSize,
-    doc.colorMode,
-    doc.printStyle,
-    doc.paperType,
+  const fileType = (doc.fileType || doc.type || '').toLowerCase();
+  if (fileType === 'pdf' || fileType.includes('pdf')) {
+    const pdfCalc = calculatePdfPrice(doc, pricingRules);
+    return {
+      printablePages: pdfCalc.printablePages,
+      sheetsCount: pdfCalc.sheetsCount,
+      ratePerPage: pdfCalc.ratePerPage,
+      totalPrice: pdfCalc.totalPrice,
+    };
+  }
+
+  const pageCount = Math.max(1, Number(doc.pageCount || (doc as any).pagesCount || 1));
+  const pageRange = doc.pageRange || 'all';
+  const printablePages = Math.max(1, calculatePrintablePages(pageRange, pageCount) || 1);
+
+  const rawStyle = String(doc.printStyle || '').toLowerCase();
+  const normPrintStyle: PrintStyle =
+    rawStyle.includes('back') || rawStyle.includes('duplex') ? 'Back-to-Back' : 'Single Sided';
+
+  const photoCollage: PhotoCollage = doc.photoCollage || 'Original';
+
+  const rawColor = String(doc.colorMode || '').toLowerCase();
+  const normColorMode: ColorMode =
+    rawColor === 'colour' || rawColor === 'color' ? 'Colour' : 'B&W';
+  const normPaperSize: PaperSize = doc.paperSize === 'A3' ? 'A3' : 'A4';
+  const normPaperType: PaperType =
+    doc.paperType === 'Glossy Paper' ? 'Glossy Paper' : 'Plain Paper';
+
+  let ratePerPage = findRatePerPage(
+    normPaperSize,
+    normColorMode,
+    normPrintStyle,
+    normPaperType,
     pricingRules
   );
 
+  if (!Number.isFinite(ratePerPage) || ratePerPage <= 0) {
+    ratePerPage = normColorMode === 'Colour' ? 8.0 : 3.0;
+  }
+
   // Price = ratePerPage * printablePages * copies (or sheets if photo collage scaled)
-  const effectivePages = doc.photoCollage !== 'Original' ? sheetsCount : printablePages;
-  const totalPrice = Number((ratePerPage * effectivePages * Math.max(1, doc.copies)).toFixed(2));
+  const copies = Math.max(1, Number(doc.copies || 1));
+  const baseSheets = Math.max(1, calculateSheets(printablePages, normPrintStyle, photoCollage) || 1);
+  const effectivePages = photoCollage !== 'Original' ? baseSheets : printablePages;
+  const sheetsCount = baseSheets * copies;
+  const totalPrice = Number((ratePerPage * effectivePages * copies).toFixed(2)) || 0;
 
   return {
     printablePages,
@@ -271,14 +427,15 @@ export function calculateOrderSummary(
   let totalPrintablePages = 0;
   let totalSheets = 0;
 
-  for (const doc of documents) {
+  for (const doc of documents || []) {
     const calc = calculateDocumentPricing(doc, pricingRules);
-    subtotal += calc.totalPrice;
-    totalPrintablePages += calc.printablePages * doc.copies;
-    totalSheets += calc.sheetsCount * doc.copies;
+    const copies = Math.max(1, Number(doc.copies || 1));
+    subtotal += calc.totalPrice || 0;
+    totalPrintablePages += (calc.printablePages || 1) * copies;
+    totalSheets += calc.sheetsCount || 1;
   }
 
-  subtotal = Number(subtotal.toFixed(2));
+  subtotal = Number((subtotal || 0).toFixed(2));
 
   let discountAmount = 0;
   let appliedDiscountTitle: string | undefined;
@@ -328,3 +485,19 @@ export function calculateOrderSummary(
     totalSheets,
   };
 }
+
+/**
+ * Centralized order pricing function
+ * Accepts order documents or order object and calculates dynamic price
+ */
+export function calculatePrintPrice(
+  orderOrDocs: { documents: DocumentItem[]; discountCode?: string } | DocumentItem[],
+  pricingRules: PricingRule[] = DEFAULT_PRICING_RULES,
+  discounts: DiscountRule[] = DEFAULT_DISCOUNTS
+) {
+  if (Array.isArray(orderOrDocs)) {
+    return calculateOrderSummary(orderOrDocs, pricingRules, discounts);
+  }
+  return calculateOrderSummary(orderOrDocs.documents, pricingRules, discounts, orderOrDocs.discountCode);
+}
+

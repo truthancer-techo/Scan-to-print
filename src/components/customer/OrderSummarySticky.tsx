@@ -1,6 +1,6 @@
 import React from 'react';
 import { DocumentItem } from '../../types';
-import { ArrowRight, ArrowLeft, Wallet, CreditCard } from 'lucide-react';
+import { ArrowRight, ArrowLeft, Wallet, CreditCard, Check } from 'lucide-react';
 
 interface OrderSummaryStickyProps {
   documents: DocumentItem[];
@@ -25,13 +25,10 @@ export const OrderSummarySticky: React.FC<OrderSummaryStickyProps> = ({
   onBack,
   backLabel = 'Back',
   onNext,
-  nextLabel = 'Continue to Pay',
+  nextLabel = 'PRINT',
   onConfirmManualPay,
   onConfirmAndPay,
 }) => {
-  const totalPages = documents.reduce((acc, d) => acc + d.printablePages * d.copies, 0);
-  const totalSheets = documents.reduce((acc, d) => acc + d.sheetsCount * d.copies, 0);
-
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 bg-[#070e1c]/95 backdrop-blur-lg border-t border-blue-950/80 shadow-[0_-8px_25px_rgba(0,0,0,0.7)] p-3 sm:p-4 transition-all text-white">
       <div className="max-w-4xl mx-auto flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 sm:gap-4">
@@ -49,32 +46,14 @@ export const OrderSummarySticky: React.FC<OrderSummaryStickyProps> = ({
             </button>
           )}
 
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                Total Payable
-              </span>
-              {discountAmount > 0 && (
-                <span className="text-xs line-through text-slate-500 font-mono">
-                  ₹{subtotal.toFixed(2)}
-                </span>
-              )}
+          {/* Ready to print status indicator (replacing Total Payable box) */}
+          <div className="flex items-center gap-2.5 py-1 px-1">
+            <div className="w-5 h-5 rounded-full bg-[#00c58e] text-[#051124] flex items-center justify-center shrink-0 shadow-sm">
+              <Check className="w-3.5 h-3.5 stroke-[3.5]" />
             </div>
-
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl sm:text-3xl font-black text-white tracking-tight font-mono">
-                ₹{totalAmount.toFixed(2)}
-              </span>
-              {discountTitle && (
-                <span className="text-[10px] font-extrabold text-orange-400 bg-orange-500/15 px-2 py-0.5 rounded-full border border-orange-500/30">
-                  {discountTitle}
-                </span>
-              )}
-            </div>
-
-            <p className="text-[11px] text-slate-400 font-medium truncate">
-              {documents.length} doc{documents.length > 1 ? 's' : ''} • {totalPages} page{totalPages > 1 ? 's' : ''} • {totalSheets} sheet{totalSheets > 1 ? 's' : ''}
-            </p>
+            <span className="text-[15px] sm:text-base font-semibold text-[#8ca8d1] tracking-wide select-none whitespace-nowrap">
+              Ready to print
+            </span>
           </div>
         </div>
 
@@ -97,8 +76,8 @@ export const OrderSummarySticky: React.FC<OrderSummaryStickyProps> = ({
               onClick={onNext}
               className="flex-1 sm:flex-initial min-h-[46px] sm:min-h-[48px] flex items-center justify-center gap-2 px-6 sm:px-8 py-3 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 active:scale-[0.98] text-white rounded-full font-black text-sm sm:text-base shadow-lg shadow-orange-500/25 transition-all tracking-wide"
             >
-              <span className="whitespace-nowrap">{nextLabel}</span>
-              <ArrowRight className="w-4 h-4 stroke-[2.5]" />
+              <span className="whitespace-nowrap">{nextLabel.replace(/→/g, '').trim()}</span>
+              <ArrowRight className="w-4 h-4 stroke-[2.8]" />
             </button>
           ) : (
             <>

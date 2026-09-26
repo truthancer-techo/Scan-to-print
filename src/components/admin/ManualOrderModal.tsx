@@ -279,9 +279,9 @@ export const ManualOrderModal: React.FC<ManualOrderModalProps> = ({
                 </div>
 
                 <div className="text-right text-[11px] font-mono text-slate-600">
-                  Rate: ₹{item.ratePerPage.toFixed(2)} • Item Total:{' '}
+                  Rate: ₹{(item.ratePerPage ?? 0).toFixed(2)} • Item Total:{' '}
                   <strong className="text-amber-800 font-bold">
-                    ₹{item.totalPrice.toFixed(2)}
+                    ₹{(item.totalPrice ?? 0).toFixed(2)}
                   </strong>
                 </div>
               </div>
@@ -333,7 +333,7 @@ export const ManualOrderModal: React.FC<ManualOrderModalProps> = ({
           <div className="p-4 bg-slate-900 text-white rounded-2xl flex items-center justify-between">
             <span className="font-bold text-sm">Total Payable</span>
             <span className="text-xl font-black font-mono text-amber-400">
-              ₹{summary.totalAmount.toFixed(2)}
+              ₹{(summary.totalAmount ?? 0).toFixed(2)}
             </span>
           </div>
 

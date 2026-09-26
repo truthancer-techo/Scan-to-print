@@ -21,20 +21,25 @@ export const CustomerTrackPage: React.FC = () => {
     setIsSearching(true);
 
     try {
-      // If it looks like ORD-XXXX directly
-      if (q.toUpperCase().startsWith('ORD-')) {
+      // First attempt direct order ID lookup (e.g. 4-char token like 8K2P or ORD-0001)
+      try {
         const order = await api.getOrder(q.toUpperCase());
-        setActiveOrderId(order.id);
-      } else {
-        // Search by phone or partial
-        const res = await api.getOrders({ search: q });
-        if (res.orders.length === 1) {
-          setActiveOrderId(res.orders[0].id);
-        } else if (res.orders.length > 1) {
-          setRecentSearchResults(res.orders);
-        } else {
-          setSearchError(`No orders found matching "${q}".`);
+        if (order?.id) {
+          setActiveOrderId(order.id);
+          return;
         }
+      } catch {
+        // Fall through to query-based search
+      }
+
+      // Search by phone or partial
+      const res = await api.getOrders({ search: q });
+      if (res.orders.length === 1) {
+        setActiveOrderId(res.orders[0].id);
+      } else if (res.orders.length > 1) {
+        setRecentSearchResults(res.orders);
+      } else {
+        setSearchError(`No orders found matching "${q}".`);
       }
     } catch (err: any) {
       setSearchError('Could not find order. Please verify your Order ID or phone number.');
@@ -121,7 +126,7 @@ export const CustomerTrackPage: React.FC = () => {
                   <div>
                     <span className="font-mono font-bold text-slate-900">{ord.id}</span>
                     <p className="text-slate-500 text-[11px]">
-                      {ord.customerName} • {ord.documents.length} doc(s) • ₹{ord.totalAmount.toFixed(2)}
+                      {ord.customerName} • {ord.documents?.length || 0} doc(s) • ₹{(ord.totalAmount ?? 0).toFixed(2)}
                     </p>
                   </div>
                   <span className="px-2.5 py-1 bg-amber-100 text-amber-900 font-bold rounded-full text-[10px]">

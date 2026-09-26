@@ -372,16 +372,6 @@ export const PrintSettingsPanel: React.FC<PrintSettingsPanelProps> = ({
           )}
         </div>
       )}
-
-      {/* Calculation Footnote */}
-      <div className="bg-[#081124] p-3.5 rounded-2xl border border-blue-950 flex items-center justify-between text-xs">
-        <span className="text-slate-400">
-          Document Subtotal: <strong className="text-slate-200">₹{doc.ratePerPage.toFixed(2)}</strong> × {doc.printablePages}p × {doc.copies}c
-        </span>
-        <span className="font-mono font-black text-orange-400 text-sm">
-          ₹{doc.totalPrice.toFixed(2)}
-        </span>
-      </div>
     </div>
   );
 };

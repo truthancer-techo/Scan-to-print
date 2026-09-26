@@ -1,6 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCw, Download, FileText, CheckCircle } from 'lucide-react';
 import { DocumentItem } from '../../types';
+import { PdfPreview } from '../customer/preview/PdfPreview';
+import { useModalScrollLock } from '../../utils/useModalScrollLock';
 
 interface DocumentPreviewModalProps {
   document: DocumentItem | null;
@@ -15,19 +17,56 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 }) => {
   const [zoom, setZoom] = useState<number>(100);
   const [rotation, setRotation] = useState<number>(doc?.rotation || 0);
+  const imageScrollRef = useRef<HTMLDivElement | null>(null);
+
+  const isImage =
+    doc?.type.startsWith('image/') || doc?.name.match(/\.(jpg|jpeg|png|webp|bmp)$/i);
+  const isPdf =
+    doc?.fileType === 'pdf' || doc?.type.includes('pdf') || doc?.name.toLowerCase().endsWith('.pdf');
+
+  // Activate scroll lock on image modal if open
+  useModalScrollLock(isOpen && !isPdf && !!doc, imageScrollRef, onClose);
 
   if (!isOpen || !doc) return null;
 
-  const isImage = doc.type.startsWith('image/') || doc.name.match(/\.(jpg|jpeg|png|webp|bmp)$/i);
-  const isPdf = doc.type.includes('pdf') || doc.name.endsWith('.pdf');
+  // Dedicated in-app PDF rendering via PDF.js with continuous vertical scroll
+  if (isPdf) {
+    return (
+      <div
+        className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150 select-none"
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+      >
+        <div
+          className="bg-[#070e1c] rounded-2xl max-w-4xl w-full flex flex-col h-[94vh] max-h-[94vh] overflow-hidden shadow-2xl border border-blue-900/60 text-white"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <PdfPreview document={doc} onClose={onClose} isModal={true} />
+        </div>
+      </div>
+    );
+  }
 
   const handleRotate = () => {
     setRotation((prev) => (prev + 90) % 360);
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-md">
-      <div className="bg-[#0b162d] rounded-2xl max-w-3xl w-full flex flex-col max-h-[92vh] overflow-hidden shadow-2xl border border-blue-900/50 text-white">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-md animate-in fade-in duration-150 select-none"
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        className="bg-[#0b162d] rounded-2xl max-w-3xl w-full flex flex-col max-h-[92vh] overflow-hidden shadow-2xl border border-blue-900/50 text-white"
+        onClick={(e) => e.stopPropagation()}
+      >
         {/* Modal Top Bar */}
         <div className="p-4 bg-[#070e1c] text-white flex items-center justify-between border-b border-blue-950">
           <div className="flex items-center gap-3 overflow-hidden">
@@ -44,6 +83,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => setZoom((z) => Math.max(50, z - 25))}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#112347] transition"
               title="Zoom out"
@@ -52,6 +92,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             </button>
             <span className="text-xs text-slate-300 font-mono">{zoom}%</span>
             <button
+              type="button"
               onClick={() => setZoom((z) => Math.min(200, z + 25))}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#112347] transition"
               title="Zoom in"
@@ -59,6 +100,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               <ZoomIn className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={handleRotate}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#112347] transition ml-1"
               title="Rotate 90 degrees"
@@ -66,8 +108,10 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               <RotateCw className="w-4 h-4" />
             </button>
             <button
+              type="button"
               onClick={onClose}
               className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-[#112347] transition ml-2"
+              aria-label="Close"
             >
               <X className="w-5 h-5" />
             </button>
@@ -75,7 +119,11 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         </div>
 
         {/* Viewport Area */}
-        <div className="flex-1 bg-[#040813] overflow-auto p-6 flex items-center justify-center min-h-[380px]">
+        <div
+          ref={imageScrollRef}
+          className="flex-1 bg-[#040813] overflow-auto overscroll-contain p-6 flex items-center justify-center min-h-[380px]"
+          style={{ overscrollBehavior: 'contain' }}
+        >
           {isImage && doc.url ? (
             <div
               className="transition-transform duration-200 shadow-2xl rounded-lg overflow-hidden bg-white"
@@ -88,17 +136,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 src={doc.url}
                 alt={doc.name}
                 className="max-h-[500px] object-contain block mx-auto"
-              />
-            </div>
-          ) : isPdf && doc.url ? (
-            <div
-              className="w-full h-[500px] bg-white rounded-lg shadow-2xl overflow-hidden"
-              style={{ transform: `scale(${zoom / 100})` }}
-            >
-              <iframe
-                src={`${doc.url}#toolbar=0`}
-                title={doc.name}
-                className="w-full h-full border-0"
               />
             </div>
           ) : (
@@ -117,7 +154,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
 
         {/* Bottom Configuration Summary */}
         <div className="p-4 bg-[#0b162d] border-t border-blue-900/40 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-4 text-slate-300">
+          <div className="flex flex-wrap items-center gap-3 text-slate-300">
             <span>
               Format:{' '}
               <strong className="text-white font-semibold">
@@ -127,10 +164,6 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
             <span>
               Color Mode:{' '}
               <strong className="text-white font-semibold">{doc.colorMode}</strong>
-            </span>
-            <span>
-              Paper:{' '}
-              <strong className="text-white font-semibold">{doc.paperType}</strong>
             </span>
             <span>
               Copies:{' '}
@@ -149,8 +182,9 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               </a>
             )}
             <button
+              type="button"
               onClick={onClose}
-              className="px-5 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white rounded-full font-bold transition shadow-md"
+              className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold transition shadow-sm"
             >
               Done
             </button>

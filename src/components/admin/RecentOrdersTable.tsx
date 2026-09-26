@@ -160,7 +160,7 @@ export const RecentOrdersTable: React.FC<RecentOrdersTableProps> = ({
 
                     {/* Amount */}
                     <td className="px-5 py-4 whitespace-nowrap text-right font-mono font-extrabold text-slate-900 text-sm">
-                      ₹{ord.totalAmount.toFixed(2)}
+                      ₹{(ord.totalAmount ?? 0).toFixed(2)}
                     </td>
 
                     {/* Actions */}

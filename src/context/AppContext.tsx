@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { BusinessProfile, AppNotification, Employee, PricingRule, DiscountRule, Printer } from '../types';
+import { BusinessProfile, AppNotification, Employee, PricingRule, DiscountRule, Printer, CurrentOrderDraft } from '../types';
 import { api } from '../services/api';
 import { DEFAULT_PRICING_RULES, DEFAULT_DISCOUNTS } from '../utils/pricing';
 
@@ -35,6 +35,9 @@ interface AppContextType {
   removeToast: (id: string) => void;
   lastUpdateTimestamp: number;
   triggerGlobalRefresh: () => void;
+  currentOrder: CurrentOrderDraft | null;
+  setCurrentOrder: React.Dispatch<React.SetStateAction<CurrentOrderDraft | null>>;
+  clearCurrentOrder: () => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -59,6 +62,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
+  // Centralized current order state
+  const [currentOrder, setCurrentOrder] = useState<CurrentOrderDraft | null>(null);
+  const clearCurrentOrder = useCallback(() => {
+    setCurrentOrder(null);
   }, []);
 
   // Admin Auth State
@@ -334,6 +343,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         removeToast,
         lastUpdateTimestamp,
         triggerGlobalRefresh,
+        currentOrder,
+        setCurrentOrder,
+        clearCurrentOrder,
       }}
     >
       {children}

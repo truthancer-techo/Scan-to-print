@@ -134,9 +134,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order, isOpen, onClo
                   </td>
                   <td className="py-2 text-center font-mono">{doc.printablePages}</td>
                   <td className="py-2 text-center font-mono">{doc.copies}</td>
-                  <td className="py-2 text-right font-mono">₹{doc.ratePerPage.toFixed(2)}</td>
+                  <td className="py-2 text-right font-mono">₹{(doc.ratePerPage ?? 0).toFixed(2)}</td>
                   <td className="py-2 text-right font-mono font-bold">
-                    ₹{doc.totalPrice.toFixed(2)}
+                    ₹{(doc.totalPrice ?? 0).toFixed(2)}
                   </td>
                 </tr>
               ))}
@@ -148,12 +148,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order, isOpen, onClo
             <div className="w-64 space-y-1.5 text-xs">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal:</span>
-                <span className="font-mono">₹{order.subtotal.toFixed(2)}</span>
+                <span className="font-mono">₹{(order.subtotal ?? 0).toFixed(2)}</span>
               </div>
-              {order.discountAmount > 0 && (
+              {(order.discountAmount ?? 0) > 0 && (
                 <div className="flex justify-between text-emerald-700 font-semibold">
                   <span>Discount:</span>
-                  <span className="font-mono">-₹{order.discountAmount.toFixed(2)}</span>
+                  <span className="font-mono">-₹{(order.discountAmount ?? 0).toFixed(2)}</span>
                 </div>
               )}
               <div className="flex justify-between text-slate-500 text-[11px]">
@@ -163,7 +163,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({ order, isOpen, onClo
               <div className="flex justify-between text-base font-black text-slate-900 border-t-2 border-slate-900 pt-2">
                 <span>Grand Total:</span>
                 <span className="font-mono text-amber-800">
-                  ₹{order.totalAmount.toFixed(2)}
+                  ₹{(order.totalAmount ?? 0).toFixed(2)}
                 </span>
               </div>
             </div>

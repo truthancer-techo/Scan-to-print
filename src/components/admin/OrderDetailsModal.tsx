@@ -93,8 +93,13 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="font-mono font-extrabold text-lg text-slate-900">
-                {order.id}
+                {order.orderToken || order.id}
               </span>
+              {order.orderToken && order.orderToken !== order.id && (
+                <span className="text-xs font-mono text-slate-500 font-semibold">
+                  ({order.id})
+                </span>
+              )}
               <span
                 className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
                   order.orderStatus === 'Completed'
@@ -157,7 +162,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
               </span>
               <div className="flex items-baseline justify-between">
                 <span className="font-extrabold text-base font-mono text-amber-700">
-                  ₹{order.totalAmount.toFixed(2)}
+                  ₹{(order.totalAmount ?? 0).toFixed(2)}
                 </span>
                 <span className="text-[10px] uppercase font-bold text-slate-500">
                   {order.paymentMethod}
@@ -240,7 +245,7 @@ export const OrderDetailsModal: React.FC<OrderDetailsModalProps> = ({
 
                   <div className="flex items-center gap-3 self-end sm:self-auto">
                     <span className="font-bold font-mono text-sm text-slate-900">
-                      ₹{doc.totalPrice.toFixed(2)}
+                      ₹{(doc.totalPrice ?? 0).toFixed(2)}
                     </span>
                     {doc.url && (
                       <a

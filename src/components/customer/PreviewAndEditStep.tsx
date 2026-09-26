@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { DocumentItem, PricingRule } from '../../types';
+import { PdfPreview } from './preview/PdfPreview';
 import {
   ArrowLeft,
   ArrowRight,
@@ -108,7 +109,14 @@ export const PreviewAndEditStep: React.FC<PreviewAndEditStepProps> = ({
   };
 
   const totalPages = documents.reduce((acc, d) => acc + d.printablePages * d.copies, 0);
-  const totalSheets = documents.reduce((acc, d) => acc + d.sheetsCount * d.copies, 0);
+  const totalSheets = documents.reduce((acc, d) => {
+    if (d.fileType === 'pdf') {
+      const isDuplex = d.printStyle === 'Back-to-Back';
+      const sides = d.printablePages * d.copies;
+      return acc + (isDuplex ? Math.ceil(sides / 2) : sides);
+    }
+    return acc + d.sheetsCount * d.copies;
+  }, 0);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-36">
@@ -118,11 +126,11 @@ export const PreviewAndEditStep: React.FC<PreviewAndEditStepProps> = ({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-2 px-3.5 py-2 bg-[#112347] hover:bg-[#162c5a] text-slate-200 border border-blue-800/40 rounded-xl font-bold text-xs sm:text-sm shadow-sm transition active:scale-95"
+            className="inline-flex items-center gap-1.5 px-3.5 py-2.5 bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border border-blue-800/40 rounded-xl font-bold text-xs sm:text-sm shadow-sm transition active:scale-95 shrink-0"
             aria-label="Back to Configure"
           >
-            <ArrowLeft className="w-4 h-4 text-slate-300" />
-            <span>← Back to Configure</span>
+            <ArrowLeft className="w-4 h-4 text-slate-300 shrink-0" />
+            <span>Back to Configure</span>
           </button>
 
           <div>
@@ -231,15 +239,8 @@ export const PreviewAndEditStep: React.FC<PreviewAndEditStepProps> = ({
                 />
               </div>
             ) : isPdf && activeDoc.url ? (
-              <div
-                className="w-full h-[450px] bg-white rounded-lg shadow-2xl overflow-hidden transition-transform duration-200"
-                style={{ transform: `scale(${zoom / 100})` }}
-              >
-                <iframe
-                  src={`${activeDoc.url}#toolbar=0`}
-                  title={activeDoc.name}
-                  className="w-full h-full border-0"
-                />
+              <div className="w-full h-[520px] rounded-xl overflow-hidden shadow-2xl border border-blue-900/50">
+                <PdfPreview document={activeDoc} isModal={false} />
               </div>
             ) : (
               <div className="text-center p-8 bg-[#0b162d] rounded-2xl border border-blue-900/50 shadow-xl max-w-xs">
@@ -369,11 +370,11 @@ export const PreviewAndEditStep: React.FC<PreviewAndEditStepProps> = ({
           <button
             type="button"
             onClick={onBack}
-            className="inline-flex items-center gap-1.5 px-4 py-3 bg-[#112347] hover:bg-[#162c5a] text-slate-200 border border-blue-800/40 rounded-full font-bold text-xs sm:text-sm shadow-sm transition active:scale-95 shrink-0"
+            className="inline-flex items-center gap-1.5 px-4 py-3 bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border border-blue-800/40 rounded-full font-bold text-xs sm:text-sm shadow-sm transition active:scale-95 shrink-0"
             aria-label="Back to Configure"
           >
             <ArrowLeft className="w-4 h-4 text-slate-300" />
-            <span>← Back</span>
+            <span>Back</span>
           </button>
 
           {/* Pricing Preview */}

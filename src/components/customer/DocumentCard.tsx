@@ -1,13 +1,13 @@
 import React from 'react';
 import { DocumentItem } from '../../types';
-import { FileText, Edit2, Trash2, Eye, CheckCircle2, X } from 'lucide-react';
+import { FileText, Trash2, Eye, CheckCircle2, X } from 'lucide-react';
 
 interface DocumentCardProps {
   document: DocumentItem;
   index: number;
   isSelected: boolean;
   onSelect: () => void;
-  onEdit: () => void;
+  onEdit?: () => void;
   onPreview: () => void;
   onRemove: () => void;
 }
@@ -21,7 +21,24 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
   onPreview,
   onRemove,
 }) => {
+  const [showConfirmRemove, setShowConfirmRemove] = React.useState(false);
   const isImage = doc.type.startsWith('image/') || doc.name.match(/\.(jpg|jpeg|png|webp)$/i);
+
+  const handleRemoveClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmRemove(true);
+  };
+
+  const handleConfirmDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmRemove(false);
+    onRemove();
+  };
+
+  const handleCancelDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowConfirmRemove(false);
+  };
 
   return (
     <div
@@ -32,13 +49,39 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
           : 'bg-[#0b162d] hover:bg-[#0d1a36] border-blue-900/50 hover:border-blue-700/60 shadow-lg shadow-black/30'
       }`}
     >
+      {/* Remove Confirmation Dialog Overlay */}
+      {showConfirmRemove && (
+        <div
+          onClick={(e) => e.stopPropagation()}
+          className="absolute inset-0 bg-[#070e1c]/95 backdrop-blur-xs z-30 rounded-3xl p-4 flex flex-col items-center justify-center text-center border border-rose-900/60 shadow-2xl animate-in fade-in duration-150"
+        >
+          <p className="text-xs font-bold text-white mb-1">Remove Document?</p>
+          <p className="text-[11px] text-slate-400 mb-3 truncate max-w-[200px]">
+            {doc.name}
+          </p>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleCancelDelete}
+              className="px-3 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 rounded-lg transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDelete}
+              className="px-3 py-1.5 text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition shadow-sm"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Top-Right Quick Remove 'X' Button */}
       <button
         type="button"
-        onClick={(e) => {
-          e.stopPropagation();
-          onRemove();
-        }}
+        onClick={handleRemoveClick}
         className="absolute top-3 right-3 z-10 w-6 h-6 rounded-full bg-slate-800/90 hover:bg-rose-600 text-slate-400 hover:text-white flex items-center justify-center transition active:scale-90 border border-slate-700/50 shadow-sm"
         title="Remove this document"
         aria-label="Remove document"
@@ -54,68 +97,47 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
       )}
 
       <div className="flex items-start gap-3 pr-6">
-        {/* Thumbnail Preview with tap to zoom */}
-        <div
-          onClick={(e) => {
-            e.stopPropagation();
-            onPreview();
-          }}
-          className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-[#112347] border border-blue-800/40 flex items-center justify-center shrink-0 group hover:ring-2 hover:ring-orange-500 transition"
-          title="Tap to preview document"
-        >
-          {doc.url && isImage ? (
+        {/* Document Icon Box (non-clickable, no # badge) */}
+        <div className="relative w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-[#112347] border border-blue-800/40 flex items-center justify-center shrink-0 pointer-events-none select-none">
+          {doc.printLayoutThumbnail ? (
+            <img
+              src={doc.printLayoutThumbnail}
+              alt={doc.name}
+              className="w-full h-full object-cover"
+            />
+          ) : doc.url && isImage ? (
             <img
               src={doc.url}
               alt={doc.name}
-              className="w-full h-full object-cover group-hover:scale-105 transition"
+              className="w-full h-full object-cover"
             />
           ) : (
-            <FileText className="w-7 h-7 text-slate-400 group-hover:text-orange-400 transition" />
+            <FileText className="w-7 h-7 text-slate-400" />
           )}
-
-          <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-            <Eye className="w-4 h-4 text-white" />
-          </div>
-
-          <span className="absolute bottom-0.5 right-0.5 text-[8px] font-black bg-black/80 text-white px-1 rounded">
-            #{index + 1}
-          </span>
         </div>
 
         {/* Info Column */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
             <h4
-              className="font-bold text-xs sm:text-sm text-white truncate max-w-[130px] sm:max-w-[220px] leading-snug"
+              className="font-bold text-xs sm:text-sm text-white truncate leading-snug"
               title={doc.name}
             >
               {doc.name}
             </h4>
-            <span className="font-mono font-extrabold text-xs sm:text-sm text-orange-400 shrink-0">
-              ₹{doc.totalPrice.toFixed(2)}
-            </span>
           </div>
 
-          <p className="text-[11px] text-slate-400 mt-0.5">
-            {doc.printablePages} {doc.printablePages === 1 ? 'page' : 'pages'} • {doc.copies}{' '}
-            {doc.copies === 1 ? 'copy' : 'copies'}
-          </p>
-
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <span className="text-[10px] font-semibold bg-[#112347] text-slate-300 border border-blue-900/40 px-2 py-0.5 rounded-md">
-              {doc.paperSize}
-            </span>
-            <span className="text-[10px] font-semibold bg-[#112347] text-slate-300 border border-blue-900/40 px-2 py-0.5 rounded-md">
-              {doc.colorMode}
-            </span>
-            <span className="text-[10px] font-semibold bg-[#112347] text-slate-300 border border-blue-900/40 px-2 py-0.5 rounded-md">
-              {doc.printStyle}
-            </span>
-            {doc.paperType === 'Glossy Paper' && (
-              <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded-md">
-                Glossy
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            {doc.detectedDocumentType === 'aadhaar_card' && (
+              <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                Aadhaar A4
               </span>
             )}
+            <p className="text-[11px] text-slate-400">
+              {doc.printablePages} {doc.printablePages === 1 ? 'page' : 'pages'} • {doc.copies}{' '}
+              {doc.copies === 1 ? 'copy' : 'copies'}
+              {doc.sheetsCount ? ` • ${doc.sheetsCount} sheet${doc.sheetsCount > 1 ? 's' : ''}` : ''}
+            </p>
           </div>
         </div>
       </div>
@@ -135,21 +157,7 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
         </button>
         <button
           type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit();
-          }}
-          className="inline-flex items-center gap-1 text-orange-400 hover:text-orange-300 font-semibold px-2 py-1.5 rounded-lg hover:bg-orange-500/10 transition"
-        >
-          <Edit2 className="w-3.5 h-3.5" />
-          <span>Edit</span>
-        </button>
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onRemove();
-          }}
+          onClick={handleRemoveClick}
           className="inline-flex items-center gap-1 text-rose-400 hover:text-rose-300 font-medium px-2 py-1.5 rounded-lg hover:bg-rose-950/40 transition"
         >
           <Trash2 className="w-3.5 h-3.5" />

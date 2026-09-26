@@ -427,6 +427,20 @@ function loadInitialStore(): AppStore {
     try {
       const data = JSON.parse(fs.readFileSync(DB_FILE, 'utf-8'));
       if (data && data.orders && data.pricing) {
+        // Sanitize existing orders so totalAmount, subtotal, and discountAmount are never null
+        data.orders = data.orders.map((o: Order) => {
+          const docSum = (o.documents || []).reduce((acc: number, d: any) => acc + (Number(d.totalPrice) || 0), 0);
+          if (o.subtotal == null || Number.isNaN(o.subtotal)) {
+            o.subtotal = docSum;
+          }
+          if (o.discountAmount == null || Number.isNaN(o.discountAmount)) {
+            o.discountAmount = 0;
+          }
+          if (o.totalAmount == null || Number.isNaN(o.totalAmount)) {
+            o.totalAmount = Math.max(0, Number((o.subtotal - o.discountAmount).toFixed(2)));
+          }
+          return o;
+        });
         return data;
       }
     } catch (e) {
@@ -568,6 +582,11 @@ setInterval(() => {
 // API ROUTES
 // ==========================================
 
+// Health Check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
 // 1. Business Profile
 app.get('/api/business', (req, res) => {
   res.json(store.business);
@@ -653,6 +672,8 @@ app.get('/api/orders/:id', (req, res) => {
 
 app.post('/api/orders', (req, res) => {
   const {
+    id,
+    tokenCode,
     customerName,
     customerPhone,
     customerEmail,
@@ -663,9 +684,12 @@ app.post('/api/orders', (req, res) => {
     adminNotes,
   } = req.body;
 
-  if (!customerName || !customerPhone) {
-    return res.status(400).json({ error: 'Customer name and phone are required' });
-  }
+  const finalCustomerName = (customerName && typeof customerName === 'string' && customerName.trim())
+    ? customerName.trim()
+    : 'Counter Customer';
+  const finalCustomerPhone = (customerPhone && typeof customerPhone === 'string' && customerPhone.trim())
+    ? customerPhone.trim()
+    : 'Counter';
 
   if (!Array.isArray(documents) || documents.length === 0) {
     return res.status(400).json({ error: 'At least one document is required' });
@@ -691,35 +715,64 @@ app.post('/api/orders', (req, res) => {
     discountCode
   );
 
-  const orderId = `ORD-${String(store.nextOrderNumber).padStart(4, '0')}`;
+  // Helper to generate a 4-character token combining letters & numbers (e.g. 7B4X, 8K2P)
+  const generate4CharToken = (): string => {
+    const letters = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const digits = '23456789';
+    const allChars = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+    const letterPos = Math.floor(Math.random() * 4);
+    let digitPos = Math.floor(Math.random() * 4);
+    while (digitPos === letterPos) {
+      digitPos = Math.floor(Math.random() * 4);
+    }
+
+    let code = '';
+    for (let i = 0; i < 4; i++) {
+      if (i === letterPos) {
+        code += letters.charAt(Math.floor(Math.random() * letters.length));
+      } else if (i === digitPos) {
+        code += digits.charAt(Math.floor(Math.random() * digits.length));
+      } else {
+        code += allChars.charAt(Math.floor(Math.random() * allChars.length));
+      }
+    }
+    return code;
+  };
+
+  const requestedId = (id || tokenCode || '').toString().trim().toUpperCase();
+  let orderId = requestedId && requestedId.length === 4 ? requestedId : generate4CharToken();
+  while (store.orders.some((o) => o.id.toUpperCase() === orderId.toUpperCase())) {
+    orderId = generate4CharToken();
+  }
   store.nextOrderNumber += 1;
 
   const now = new Date().toISOString();
-  const isManual = paymentMethod === 'manual';
+  const isCashOrManual = paymentMethod === 'manual' || paymentMethod === 'cash';
 
   const newOrder: Order = {
     id: orderId,
     createdAt: now,
     updatedAt: now,
-    customerName: customerName.trim(),
-    customerPhone: customerPhone.trim(),
+    customerName: finalCustomerName,
+    customerPhone: finalCustomerPhone,
     customerEmail: customerEmail ? customerEmail.trim() : undefined,
     documents: verifiedDocs,
     subtotal: verifiedSummary.subtotal,
     discountAmount: verifiedSummary.discountAmount,
     discountCode: verifiedSummary.appliedDiscountTitle ? discountCode : undefined,
     totalAmount: verifiedSummary.totalAmount,
-    paymentStatus: isManual ? 'Manual Verification' : 'Pending',
-    paymentMethod: paymentMethod || 'upi',
-    orderStatus: isManual ? 'Pending' : 'Payment Pending',
+    paymentStatus: isCashOrManual ? 'Pending' : 'Pending',
+    paymentMethod: paymentMethod || 'cash',
+    orderStatus: 'Pending',
     separator: separator || 'None',
     adminNotes: adminNotes || undefined,
     history: [
       {
         timestamp: now,
-        status: isManual ? 'Pending' : 'Payment Pending',
-        note: isManual
-          ? 'Order created with Manual Pay option (Pay at counter / cash)'
+        status: 'Pending',
+        note: isCashOrManual
+          ? 'Order created with Cash / Counter pickup option'
           : 'Order created, awaiting payment verification',
         actor: 'Customer',
       },

@@ -236,7 +236,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
                 </p>
               </div>
               <span className="font-mono font-bold text-orange-400">
-                ₹{doc.totalPrice.toFixed(2)}
+                ₹{(doc.totalPrice ?? 0).toFixed(2)}
               </span>
             </div>
           ))}
@@ -245,7 +245,7 @@ export const OrderTrackingView: React.FC<OrderTrackingViewProps> = ({
         <div className="pt-3 border-t border-blue-900/40 flex items-center justify-between text-xs font-bold">
           <span className="text-slate-300">Total Paid / Payable:</span>
           <span className="text-orange-400 font-mono text-base">
-            ₹{order.totalAmount.toFixed(2)}
+            ₹{(order.totalAmount ?? 0).toFixed(2)}
           </span>
         </div>
       </div>

@@ -1,6 +1,8 @@
 export type OrderStatus =
   | 'Pending'
   | 'Payment Pending'
+  | 'PRINT_PENDING'
+  | 'Print Pending'
   | 'Paid'
   | 'Processing'
   | 'Printing'
@@ -12,7 +14,9 @@ export type OrderStatus =
 
 export type PaymentStatus =
   | 'Pending'
+  | 'PENDING'
   | 'Manual Verification'
+  | 'Pay at Counter'
   | 'Paid'
   | 'Failed'
   | 'Refunded';
@@ -60,6 +64,62 @@ export interface DocumentItem {
   ratePerPage: number;
   totalPrice: number;
   rotation?: number; // 0, 90, 180, 270
+
+  // File type and PDF-specific print configuration model
+  fileType?: 'pdf' | 'image' | 'document' | 'spreadsheet' | 'presentation' | 'text' | 'archive' | string;
+  selectedPages?: number[];
+  pageSelectionMode?: 'all' | 'custom';
+  printQuality?: 'Normal' | 'Draft' | 'High';
+  scalingMode?: 'default' | 'fit-page' | 'actual-size' | 'fill-page';
+  physicalSheets?: number;
+  subtotal?: number;
+
+  // Aadhaar Document Detection & A4 Print Layout Derivative
+  detectedDocumentType?: 'standard_pdf' | 'aadhaar_card';
+  detectionConfidence?: number;
+  detectedPanels?: AadhaarPanels;
+  layoutStatus?: AadhaarDetectionStatus;
+  printLayoutUrl?: string; // Generated A4 print layout derivative (high-res image/pdf dataURL)
+  printLayoutThumbnail?: string; // Thumbnail for instant UI display
+  originalUrl?: string; // Guaranteed reference to original untouched source PDF
+  isAadhaarDerivative?: boolean;
+  useAadhaarLayout?: boolean; // When true, uses the A4 Aadhaar layout derivative for print/preview
+}
+
+export interface BoundingBox {
+  x: number; // Normalized 0..1 (fraction of page width)
+  y: number; // Normalized 0..1 (fraction of page height)
+  width: number; // Normalized 0..1
+  height: number; // Normalized 0..1
+}
+
+export type AadhaarDetectionStatus =
+  | 'IDLE'
+  | 'ANALYZING'
+  | 'STANDARD_PDF'
+  | 'AADHAAR_DETECTED'
+  | 'REVIEW_REQUIRED'
+  | 'LAYOUT_GENERATED'
+  | 'DETECTION_FAILED';
+
+export interface AadhaarPanels {
+  front: BoundingBox;
+  back: BoundingBox;
+  sourcePage: number;
+  aspectRatio?: number;
+  rotation?: number;
+}
+
+export interface AadhaarDetectionResult {
+  detected: boolean;
+  confidence: number;
+  status: AadhaarDetectionStatus;
+  sourcePage: number;
+  panels?: AadhaarPanels;
+  reasons: string[];
+  needsReview: boolean;
+  printLayoutDataUrl?: string;
+  printLayoutThumbnail?: string;
 }
 
 export interface OrderHistoryEntry {
@@ -70,12 +130,18 @@ export interface OrderHistoryEntry {
 }
 
 export interface Order {
-  id: string; // e.g. ORD-0001
+  id: string; // e.g. PRT-7K4M92 or ORD-0001
+  orderToken?: string;
   createdAt: string;
   updatedAt: string;
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
+  customer?: {
+    name: string;
+    mobile: string;
+    email?: string;
+  };
   documents: DocumentItem[];
   subtotal: number;
   discountAmount: number;
@@ -89,6 +155,25 @@ export interface Order {
   separator: OrderSeparator;
   adminNotes?: string;
   history: OrderHistoryEntry[];
+}
+
+export interface CurrentOrderDraft {
+  orderToken: string;
+  createdAt: string;
+  customer?: {
+    name: string;
+    mobile: string;
+    email?: string;
+  };
+  documents: DocumentItem[];
+  subtotal: number;
+  discountAmount: number;
+  discountCode?: string;
+  totalAmount: number;
+  appliedDiscountTitle?: string;
+  paymentMethod?: PaymentMethod;
+  paymentStatus?: PaymentStatus;
+  orderStatus?: OrderStatus;
 }
 
 export interface PricingRule {

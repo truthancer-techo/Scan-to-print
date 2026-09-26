@@ -89,7 +89,7 @@ export const AdminInvoicesPage: React.FC = () => {
                     </td>
 
                     <td className="px-6 py-4 text-right font-mono font-extrabold text-slate-900">
-                      ₹{ord.totalAmount.toFixed(2)}
+                      ₹{(ord.totalAmount ?? 0).toFixed(2)}
                     </td>
 
                     <td className="px-6 py-4 text-center">

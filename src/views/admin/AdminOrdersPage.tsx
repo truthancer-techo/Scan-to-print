@@ -192,8 +192,13 @@ export const AdminOrdersPage: React.FC = () => {
                       >
                         <td className="px-5 py-4 whitespace-nowrap">
                           <span className="font-mono font-extrabold text-slate-900 block">
-                            {ord.id}
+                            {ord.orderToken || ord.id}
                           </span>
+                          {ord.orderToken && ord.orderToken !== ord.id && (
+                            <span className="text-[10px] font-mono text-slate-400 block -mt-0.5">
+                              {ord.id}
+                            </span>
+                          )}
                           <span className="text-[11px] text-slate-400">
                             {new Date(ord.createdAt).toLocaleDateString()} •{' '}
                             {new Date(ord.createdAt).toLocaleTimeString([], {
@@ -250,7 +255,7 @@ export const AdminOrdersPage: React.FC = () => {
                         </td>
 
                         <td className="px-5 py-4 whitespace-nowrap text-right font-mono font-extrabold text-slate-900 text-sm">
-                          ₹{ord.totalAmount.toFixed(2)}
+                          ₹{(ord.totalAmount ?? 0).toFixed(2)}
                         </td>
 
                         <td

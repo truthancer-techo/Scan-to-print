@@ -95,7 +95,7 @@ export const AdminPaymentsPage: React.FC = () => {
                 Total Verified Collections
               </span>
               <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono mt-1">
-                ₹{totalCollected.toFixed(2)}
+                ₹{(totalCollected ?? 0).toFixed(2)}
               </div>
               <p className="text-xs text-emerald-600 font-semibold mt-1">
                 From verified UPI and counter cash payments
@@ -193,7 +193,7 @@ export const AdminPaymentsPage: React.FC = () => {
                     </td>
 
                     <td className="px-6 py-4 text-right font-mono font-extrabold text-slate-900">
-                      ₹{ord.totalAmount.toFixed(2)}
+                      ₹{(ord.totalAmount ?? 0).toFixed(2)}
                     </td>
 
                     <td className="px-6 py-4 text-right">

@@ -111,7 +111,7 @@ export const AdminDashboardPage: React.FC = () => {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <KpiCard
             title="Today's Revenue"
-            value={`₹${stats ? stats.todayRevenue.toFixed(2) : '0.00'}`}
+            value={`₹${stats?.todayRevenue != null ? stats.todayRevenue.toFixed(2) : '0.00'}`}
             subtitle={`From ${stats ? stats.completedOrders : 0} completed orders`}
             icon={DollarSign}
             variant="amber"

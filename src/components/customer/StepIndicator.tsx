@@ -2,26 +2,21 @@ import React from 'react';
 import { Check } from 'lucide-react';
 
 interface StepIndicatorProps {
-  currentStep: 1 | 2 | 3 | 4;
-  onStepClick?: (step: 1 | 2 | 3 | 4) => void;
-  maxAccessibleStep?: number;
+  currentStep: 1 | 2 | 3;
 }
 
 export const StepIndicator: React.FC<StepIndicatorProps> = ({
   currentStep,
-  onStepClick,
-  maxAccessibleStep = currentStep,
 }) => {
-  const steps: { num: 1 | 2 | 3 | 4; label: string; shortLabel: string }[] = [
+  const steps: { num: 1 | 2 | 3; label: string; shortLabel: string }[] = [
     { num: 1, label: 'Upload', shortLabel: 'Upload' },
     { num: 2, label: 'Configure', shortLabel: 'Configure' },
-    { num: 3, label: 'Preview', shortLabel: 'Preview' },
-    { num: 4, label: 'Confirm', shortLabel: 'Confirm' },
+    { num: 3, label: 'Confirm', shortLabel: 'Confirm' },
   ];
 
   // Precise track progress widths for the connector line
   const progressPercentage =
-    currentStep === 1 ? '12%' : currentStep === 2 ? '38%' : currentStep === 3 ? '68%' : '100%';
+    currentStep === 1 ? '16%' : currentStep === 2 ? '50%' : '100%';
 
   return (
     <div className="w-full max-w-xl mx-auto mb-6 px-3">
@@ -34,27 +29,16 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
           />
         </div>
 
-        <div className="flex items-center justify-between relative z-10">
+        <div className="flex items-center justify-between relative z-10 pointer-events-none">
           {steps.map((step) => {
             const isDone = currentStep > step.num;
             const isCurrent = currentStep === step.num;
-            const isClickable = onStepClick && (isDone || step.num <= maxAccessibleStep);
 
             return (
-              <button
+              <div
                 key={step.num}
-                type="button"
-                onClick={() => {
-                  if (isClickable && onStepClick) {
-                    onStepClick(step.num);
-                  }
-                }}
-                disabled={!isClickable}
                 aria-current={isCurrent ? 'step' : undefined}
-                className={`flex flex-col items-center group select-none transition-transform focus:outline-none ${
-                  isClickable ? 'cursor-pointer active:scale-95' : 'cursor-default'
-                }`}
-                title={isClickable ? `Jump to ${step.label}` : step.label}
+                className="flex flex-col items-center select-none cursor-default"
               >
                 {/* Step Circle Badge */}
                 <div
@@ -63,7 +47,7 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
                       ? 'bg-orange-500 text-white shadow-lg shadow-orange-500/40 ring-4 ring-orange-500/20 scale-105'
                       : isDone
                       ? 'bg-emerald-500 text-white shadow-sm ring-2 ring-emerald-500/30'
-                      : 'bg-[#0b1426] border border-blue-900/60 text-slate-400 group-hover:border-slate-600'
+                      : 'bg-[#0b1426] border border-blue-900/60 text-slate-400'
                   }`}
                 >
                   {isDone ? (
@@ -79,7 +63,7 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
                     isCurrent
                       ? 'text-white font-extrabold'
                       : isDone
-                      ? 'text-slate-300 group-hover:text-orange-400'
+                      ? 'text-slate-300'
                       : 'text-slate-400'
                   }`}
                 >
@@ -88,7 +72,7 @@ export const StepIndicator: React.FC<StepIndicatorProps> = ({
                     <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-4 h-[2px] bg-orange-500 rounded-full shadow-[0_0_6px_rgba(249,115,22,0.8)]" />
                   )}
                 </span>
-              </button>
+              </div>
             );
           })}
         </div>

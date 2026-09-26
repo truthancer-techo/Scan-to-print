@@ -7,6 +7,7 @@ interface UploadProgressProps {
   fileSize: number;
   progress: number;
   isComplete: boolean;
+  statusMessage?: string;
 }
 
 export const UploadProgress: React.FC<UploadProgressProps> = ({
@@ -14,6 +15,7 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({
   fileSize,
   progress,
   isComplete,
+  statusMessage,
 }) => {
   return (
     <div className="w-full max-w-xl mx-auto bg-[#0b162d] rounded-3xl p-6 sm:p-7 shadow-2xl border border-blue-900/50">
@@ -55,8 +57,10 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({
         </div>
 
         <div className="flex items-center justify-between text-xs font-semibold text-slate-300 px-1">
-          <span>{isComplete ? '✓ Upload complete' : 'Uploading...'}</span>
-          <span className="font-mono text-orange-400 font-bold">{Math.round(progress)}%</span>
+          <span className="truncate max-w-[300px]">
+            {statusMessage || (isComplete ? '✓ Upload complete' : 'Uploading...')}
+          </span>
+          <span className="font-mono text-orange-400 font-bold shrink-0">{Math.round(progress)}%</span>
         </div>
       </div>
 

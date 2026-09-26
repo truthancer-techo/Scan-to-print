@@ -2,6 +2,8 @@ import React, { useRef, useState } from 'react';
 import { UploadCloud, AlertCircle, FileText, Sparkles, ArrowUp } from 'lucide-react';
 import { DocumentItem } from '../../types';
 import { UploadProgress } from './UploadProgress';
+import { detectPdfMetadata } from '../../utils/pdfReader';
+import { analyzePdfDocument } from '../../utils/aadhaar/documentAnalyzer';
 
 interface FileUploaderProps {
   onFilesUploaded: (docs: DocumentItem[]) => void;
@@ -17,10 +19,11 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
   const [uploadFileName, setUploadFileName] = useState<string>('');
   const [uploadFileSize, setUploadFileSize] = useState<number>(0);
   const [uploadProgress, setUploadProgress] = useState<number>(0);
+  const [statusMessage, setStatusMessage] = useState<string>('');
   const [isComplete, setIsComplete] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const processFiles = (fileList: FileList | null) => {
+  const processFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     setErrorMsg(null);
 
@@ -43,72 +46,126 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
     setUploadFileName(validFiles.length === 1 ? first.name : `${validFiles.length} documents`);
     setUploadFileSize(validFiles.reduce((acc, f) => acc + f.size, 0));
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(15);
     setIsComplete(false);
 
-    // Read files and convert to data URLs
-    const docs: DocumentItem[] = [];
-    let completedCount = 0;
+    try {
+      const docs: DocumentItem[] = [];
 
-    validFiles.forEach((file, index) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        const resultUrl = e.target?.result as string;
+      for (let index = 0; index < validFiles.length; index++) {
+        const file = validFiles[index];
+        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
         const isImg = file.type.startsWith('image/');
-        const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
 
-        // Estimate pages (1 for images, or simulated estimate based on size for PDF/Word/Excel)
-        const estimatedPages = isImg
-          ? 1
-          : isPdf
-          ? Math.max(1, Math.min(25, Math.ceil(file.size / 350000)))
-          : 1;
+        // Read file as Data URL
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
 
-        const docItem: DocumentItem = {
-          id: `doc-${Date.now()}-${index}`,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          url: resultUrl,
-          previewUrl: isImg ? resultUrl : undefined,
-          pageCount: estimatedPages,
-          pageRange: 'all',
-          printablePages: estimatedPages,
-          copies: 1,
-          paperSize: 'A4',
-          colorMode: isImg ? 'Colour' : 'B&W',
-          printStyle: 'Single Sided',
-          orientation: 'Auto',
-          scaling: 'Fit to page',
-          paperType: 'Plain Paper',
-          collation: 'Collated',
-          photoCollage: 'Original',
-          sheetsCount: estimatedPages,
-          ratePerPage: isImg ? 8.0 : 3.0,
-          totalPrice: (isImg ? 8.0 : 3.0) * estimatedPages,
-        };
+        if (isPdf) {
+          // Detect authentic PDF page count
+          const pdfMeta = await detectPdfMetadata(file);
+          const pageCount = pdfMeta.pageCount;
 
-        docs.push(docItem);
-        completedCount++;
+          const docItem: DocumentItem = {
+            id: `doc-${Date.now()}-${index}`,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/pdf',
+            fileType: 'pdf',
+            url: dataUrl,
+            previewUrl: dataUrl,
+            originalUrl: dataUrl,
+            pageCount: pageCount,
+            pageRange: 'all',
+            pageSelectionMode: 'all',
+            selectedPages: Array.from({ length: pageCount }, (_, i) => i + 1),
+            printablePages: pageCount,
+            copies: 1,
+            paperSize: 'A4',
+            colorMode: 'B&W',
+            printStyle: 'Single Sided',
+            orientation: 'Auto',
+            scaling: 'Fit to page',
+            scalingMode: 'default',
+            paperType: 'Plain Paper',
+            printQuality: 'Normal',
+            collation: 'Collated',
+            photoCollage: 'Original',
+            sheetsCount: pageCount,
+            physicalSheets: pageCount,
+            ratePerPage: 3.0,
+            subtotal: 3.0 * pageCount,
+            totalPrice: 3.0 * pageCount,
+          };
 
-        // Smooth progress simulation
-        const progressVal = Math.min(95, Math.round((completedCount / validFiles.length) * 90));
-        setUploadProgress(progressVal);
+          // Automatically analyze PDF for Aadhaar document layout
+          let finalDoc = docItem;
+          try {
+            setStatusMessage('Analyzing document layout…');
+            const { updatedDoc, detectionResult } = await analyzePdfDocument(
+              docItem,
+              file,
+              (status, msg) => {
+                if (msg) setStatusMessage(msg);
+              }
+            );
+            finalDoc = updatedDoc;
+            if (detectionResult?.detected) {
+              setStatusMessage('Aadhaar layout detected (Front & Back panels ready)');
+            }
+          } catch (analysisErr) {
+            console.warn('PDF layout detection skipped:', analysisErr);
+          }
 
-        if (completedCount === validFiles.length) {
-          // Finish upload
-          setTimeout(() => {
-            setUploadProgress(100);
-            setIsComplete(true);
-            setTimeout(() => {
-              setIsUploading(false);
-              onFilesUploaded(docs);
-            }, 800);
-          }, 600);
+          docs.push(finalDoc);
+        } else {
+          const estimatedPages = isImg ? 1 : 1;
+          const docItem: DocumentItem = {
+            id: `doc-${Date.now()}-${index}`,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/octet-stream',
+            fileType: isImg ? 'image' : 'document',
+            url: dataUrl,
+            previewUrl: isImg ? dataUrl : undefined,
+            pageCount: estimatedPages,
+            pageRange: 'all',
+            printablePages: estimatedPages,
+            copies: 1,
+            paperSize: 'A4',
+            colorMode: isImg ? 'Colour' : 'B&W',
+            printStyle: 'Single Sided',
+            orientation: 'Auto',
+            scaling: 'Fit to page',
+            paperType: 'Plain Paper',
+            collation: 'Collated',
+            photoCollage: 'Original',
+            sheetsCount: estimatedPages,
+            ratePerPage: isImg ? 8.0 : 3.0,
+            totalPrice: (isImg ? 8.0 : 3.0) * estimatedPages,
+          };
+          docs.push(docItem);
         }
-      };
-      reader.readAsDataURL(file);
-    });
+
+        const progressVal = Math.min(95, Math.round(((index + 1) / validFiles.length) * 90));
+        setUploadProgress(progressVal);
+      }
+
+      setUploadProgress(100);
+      setIsComplete(true);
+      setTimeout(() => {
+        setIsUploading(false);
+        onFilesUploaded(docs);
+      }, 500);
+    } catch (err: any) {
+      console.error('File upload processing failed:', err);
+      setErrorMsg('Failed to process document file. Please try again.');
+      setIsUploading(false);
+    }
   };
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -135,6 +192,7 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
         fileSize={uploadFileSize}
         progress={uploadProgress}
         isComplete={isComplete}
+        statusMessage={statusMessage}
       />
     );
   }
