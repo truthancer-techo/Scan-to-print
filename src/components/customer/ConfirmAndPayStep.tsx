@@ -74,15 +74,52 @@ export const ConfirmAndPayStep: React.FC<ConfirmAndPayStepProps> = ({
 }) => {
   const { business } = useApp();
 
-  // 4-character token (abc+123 mix) generated ONCE per print job - never changes/flickers
-  const [tokenCode] = useState<string>(() => generate4CharToken());
+  // 4-character token (abc+123 mix) with ORD- prefix generated ONCE per print job - never changes/flickers
+  const [tokenCode] = useState<string>(() => `ORD-${generate4CharToken()}`);
   const [createdOrder, setCreatedOrder] = useState<Order | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
   const [isCreating, setIsCreating] = useState<boolean>(false);
+  const [isAccepted, setIsAccepted] = useState<boolean>(false);
 
   // Prevention of multiple celebration animations and submissions
   const celebrationFiredRef = useRef<boolean>(false);
   const orderCreatedRef = useRef<boolean>(false);
+  const acceptedRedirectFiredRef = useRef<boolean>(false);
+
+  // Poll for shopkeeper order acceptance and instantly redirect to home page
+  useEffect(() => {
+    let isMounted = true;
+    let pollInterval: any = null;
+
+    const pollStatus = async () => {
+      if (!tokenCode || acceptedRedirectFiredRef.current) return;
+      try {
+        const res = await api.getOrderStatus(tokenCode);
+        if (res && res.isAccepted && !acceptedRedirectFiredRef.current) {
+          acceptedRedirectFiredRef.current = true;
+          if (isMounted) {
+            setIsAccepted(true);
+          }
+          // Redirect immediately to Home page ("हाथों-हाथ होम पेज आ जाना चाहिए")
+          setTimeout(() => {
+            if (isMounted) {
+              handlePrintAnother();
+            }
+          }, 600);
+        }
+      } catch (e) {
+        // Silently retry next second
+      }
+    };
+
+    // Poll every 1000ms
+    pollInterval = setInterval(pollStatus, 1000);
+
+    return () => {
+      isMounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [tokenCode]);
 
   useEffect(() => {
     // 1. Launch celebratory confetti burst EXACTLY ONCE
@@ -216,6 +253,19 @@ export const ConfirmAndPayStep: React.FC<ConfirmAndPayStepProps> = ({
             </span>
           )}
         </div>
+
+        {/* Live Shopkeeper Acceptance Status Banner (shown only when order is accepted) */}
+        {isAccepted && (
+          <div className="mt-5 p-4 rounded-2xl bg-emerald-50 border-2 border-emerald-500 text-emerald-900 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-center gap-2 font-black text-sm sm:text-base text-emerald-700">
+              <Check className="w-5 h-5 text-emerald-600 stroke-[3] animate-bounce" />
+              <span>ऑर्डर स्वीकार कर लिया गया! (Order Accepted)</span>
+            </div>
+            <p className="text-[11px] sm:text-xs font-semibold text-emerald-600 mt-1">
+              हाथों-हाथ होम पेज पर ले जाया जा रहा है... (Returning to Home Page...)
+            </p>
+          </div>
+        )}
 
         {/* Dark Action Button: Print Another Document */}
         <button

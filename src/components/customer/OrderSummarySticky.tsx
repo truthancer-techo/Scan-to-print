@@ -25,7 +25,7 @@ export const OrderSummarySticky: React.FC<OrderSummaryStickyProps> = ({
   onBack,
   backLabel = 'Back',
   onNext,
-  nextLabel = 'PRINT',
+  nextLabel = 'Continue to print',
   onConfirmManualPay,
   onConfirmAndPay,
 }) => {

@@ -89,6 +89,35 @@ export const api = {
     return res.json();
   },
 
+  async getOrderStatus(id: string): Promise<{
+    id: string;
+    orderStatus: OrderStatus;
+    isAccepted: boolean;
+    acceptedAt?: string;
+    updatedAt: string;
+  }> {
+    const res = await fetch(`${API_BASE}/orders/${encodeURIComponent(id)}/status`);
+    if (!res.ok) throw new Error('Failed to fetch order status');
+    return res.json();
+  },
+
+  async acceptOrder(idOrToken: string, options?: { note?: string; actor?: string }): Promise<{
+    success: boolean;
+    message: string;
+    order: Order;
+  }> {
+    const res = await fetch(`${API_BASE}/orders/accept`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: idOrToken, ...options }),
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Failed to accept order');
+    }
+    return res.json();
+  },
+
   async createOrder(data: {
     id?: string;
     customerName: string;

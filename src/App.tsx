@@ -1,7 +1,6 @@
 import React from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { ToastContainer } from './components/common/ToastContainer';
-import { Navbar } from './components/common/Navbar';
 
 // Customer Views
 import { CustomerPrintPortal } from './views/customer/CustomerPrintPortal';
@@ -100,13 +99,8 @@ const AppRouter: React.FC = () => {
 };
 
 const AppLayout: React.FC = () => {
-  const { currentPath } = useApp();
-  const cleanPath = currentPath.split('?')[0].replace(/\/$/, '') || '/';
-  const isCustomerRoute = !cleanPath.startsWith('/admin');
-
   return (
     <div className="min-h-screen bg-[#060b17] text-slate-100 selection:bg-orange-500 selection:text-white flex flex-col">
-      {isCustomerRoute && <Navbar />}
       <main className="flex-1">
         <AppRouter />
       </main>

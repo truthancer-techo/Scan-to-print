@@ -1,15 +1,25 @@
 import React from 'react';
 import { useApp } from '../../context/AppContext';
-import { MapPin, Phone, Mail, Clock, MessageSquare, ExternalLink, ShieldCheck, Printer } from 'lucide-react';
+import { MapPin, Phone, Mail, Clock, MessageSquare, ExternalLink, ShieldCheck, Printer, ArrowLeft } from 'lucide-react';
 
 export const CustomerContactPage: React.FC = () => {
-  const { business } = useApp();
+  const { business, navigate } = useApp();
 
   const phone = business?.phone || '+91 98291 45678';
   const wa = business?.whatsappNumber?.replace(/\D/g, '') || '9829145678';
 
   return (
     <div className="max-w-4xl mx-auto space-y-8 pb-16 px-4 pt-4 text-white">
+      <div>
+        <button
+          onClick={() => navigate('/print')}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0b162d] text-slate-300 hover:text-white border border-blue-900/50 text-xs font-bold transition active:scale-95"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 text-orange-400" />
+          <span>Back to Print Portal</span>
+        </button>
+      </div>
+
       {/* Title */}
       <div className="text-center max-w-xl mx-auto space-y-2">
         <span className="text-xs font-bold uppercase tracking-widest text-orange-400 bg-orange-500/15 px-3.5 py-1 rounded-full border border-orange-500/30">

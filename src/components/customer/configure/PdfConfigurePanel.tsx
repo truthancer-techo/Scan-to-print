@@ -24,12 +24,16 @@ interface PdfConfigurePanelProps {
   document: DocumentItem;
   pricingRules: PricingRule[];
   onChange: (updatedDoc: DocumentItem) => void;
+  totalDocumentsCount?: number;
+  isApplyToAll?: boolean;
 }
 
 export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
   document: doc,
   pricingRules,
   onChange,
+  totalDocumentsCount = 1,
+  isApplyToAll = false,
 }) => {
   const [isReviewOpen, setIsReviewOpen] = useState(false);
 
@@ -203,7 +207,7 @@ export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
   return (
     <div className="bg-[#0b162d] rounded-3xl p-4 sm:p-6 border border-blue-900/50 shadow-xl shadow-black/40 space-y-5 sm:space-y-6">
       {/* Header Bar with Document Name */}
-      <div className="border-b border-blue-900/40 pb-3.5 flex items-center justify-between gap-2.5">
+      <div className="border-b border-blue-900/40 pb-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
         <div className="flex items-center gap-2.5 min-w-0">
           <div className="w-8 h-8 rounded-xl bg-orange-500/20 text-orange-400 flex items-center justify-center border border-orange-500/30 shrink-0">
             <Sliders className="w-4 h-4 stroke-[2.5]" />
@@ -217,6 +221,13 @@ export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
             </p>
           </div>
         </div>
+
+        {isApplyToAll && totalDocumentsCount > 1 && (
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-[10px] sm:text-xs font-bold shrink-0 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Syncing to all {totalDocumentsCount} files (समान सेटिंग्स)</span>
+          </div>
+        )}
       </div>
 
       {/* Aadhaar Automatic Layout Banner (Shown only when Aadhaar is detected) */}

@@ -10,6 +10,7 @@ interface DocumentCardProps {
   onEdit?: () => void;
   onPreview: () => void;
   onRemove: () => void;
+  isUnified?: boolean;
 }
 
 export const DocumentCard: React.FC<DocumentCardProps> = ({
@@ -20,6 +21,7 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
   onEdit,
   onPreview,
   onRemove,
+  isUnified,
 }) => {
   const [showConfirmRemove, setShowConfirmRemove] = React.useState(false);
   const isImage = doc.type.startsWith('image/') || doc.name.match(/\.(jpg|jpeg|png|webp)$/i);
@@ -127,17 +129,25 @@ export const DocumentCard: React.FC<DocumentCardProps> = ({
             </h4>
           </div>
 
-          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-            {doc.detectedDocumentType === 'aadhaar_card' && (
-              <span className="inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                Aadhaar A4
-              </span>
-            )}
-            <p className="text-[11px] text-slate-400">
-              {doc.printablePages} {doc.printablePages === 1 ? 'page' : 'pages'} • {doc.copies}{' '}
-              {doc.copies === 1 ? 'copy' : 'copies'}
-              {doc.sheetsCount ? ` • ${doc.sheetsCount} sheet${doc.sheetsCount > 1 ? 's' : ''}` : ''}
-            </p>
+          {(doc.detectedDocumentType === 'aadhaar_card' || isUnified) && (
+            <div className="flex items-center gap-1.5 flex-wrap mt-1">
+              {doc.detectedDocumentType === 'aadhaar_card' && (
+                <span className="inline-block text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                  Aadhaar A4
+                </span>
+              )}
+              {isUnified && (
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">
+                  ✓ Synced
+                </span>
+              )}
+            </div>
+          )}
+
+          <div className="mt-1 text-[11px] text-slate-400">
+            <span>
+              {doc.printablePages} {doc.printablePages === 1 ? 'page' : 'pages'} • {doc.copies} {doc.copies === 1 ? 'copy' : 'copies'} • {doc.sheetsCount || doc.printablePages} {(doc.sheetsCount || doc.printablePages) === 1 ? 'sheet' : 'sheets'}
+            </span>
           </div>
         </div>
       </div>

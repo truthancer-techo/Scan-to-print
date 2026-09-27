@@ -1,9 +1,8 @@
 export type OrderStatus =
   | 'Pending'
   | 'Payment Pending'
-  | 'PRINT_PENDING'
-  | 'Print Pending'
   | 'Paid'
+  | 'Accepted'
   | 'Processing'
   | 'Printing'
   | 'Print Failed'
@@ -14,9 +13,7 @@ export type OrderStatus =
 
 export type PaymentStatus =
   | 'Pending'
-  | 'PENDING'
   | 'Manual Verification'
-  | 'Pay at Counter'
   | 'Paid'
   | 'Failed'
   | 'Refunded';
@@ -64,6 +61,8 @@ export interface DocumentItem {
   ratePerPage: number;
   totalPrice: number;
   rotation?: number; // 0, 90, 180, 270
+  zoom?: number; // 50 to 200
+  imageFitMode?: 'Fit' | 'Fill' | 'Stretch';
 
   // File type and PDF-specific print configuration model
   fileType?: 'pdf' | 'image' | 'document' | 'spreadsheet' | 'presentation' | 'text' | 'archive' | string;
@@ -130,18 +129,12 @@ export interface OrderHistoryEntry {
 }
 
 export interface Order {
-  id: string; // e.g. PRT-7K4M92 or ORD-0001
-  orderToken?: string;
+  id: string; // e.g. ORD-0001
   createdAt: string;
   updatedAt: string;
   customerName: string;
   customerPhone: string;
   customerEmail?: string;
-  customer?: {
-    name: string;
-    mobile: string;
-    email?: string;
-  };
   documents: DocumentItem[];
   subtotal: number;
   discountAmount: number;
@@ -151,6 +144,8 @@ export interface Order {
   paymentMethod: PaymentMethod;
   paymentTransactionId?: string;
   orderStatus: OrderStatus;
+  isAccepted?: boolean;
+  acceptedAt?: string;
   assignedPrinterId?: string;
   separator: OrderSeparator;
   adminNotes?: string;
@@ -158,22 +153,14 @@ export interface Order {
 }
 
 export interface CurrentOrderDraft {
-  orderToken: string;
-  createdAt: string;
-  customer?: {
-    name: string;
-    mobile: string;
-    email?: string;
-  };
   documents: DocumentItem[];
-  subtotal: number;
-  discountAmount: number;
-  discountCode?: string;
-  totalAmount: number;
-  appliedDiscountTitle?: string;
+  customerName?: string;
+  customerPhone?: string;
+  customerEmail?: string;
   paymentMethod?: PaymentMethod;
-  paymentStatus?: PaymentStatus;
-  orderStatus?: OrderStatus;
+  couponCode?: string;
+  subtotal?: number;
+  totalAmount?: number;
 }
 
 export interface PricingRule {

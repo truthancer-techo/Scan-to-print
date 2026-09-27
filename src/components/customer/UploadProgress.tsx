@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, CheckCircle2, Lock } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import { motion } from 'motion/react';
 
 interface UploadProgressProps {
@@ -19,26 +19,16 @@ export const UploadProgress: React.FC<UploadProgressProps> = ({
 }) => {
   return (
     <div className="w-full max-w-xl mx-auto bg-[#0b162d] rounded-3xl p-6 sm:p-7 shadow-2xl border border-blue-900/50">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <span className="text-xs font-bold text-orange-400 tracking-wide uppercase">
-            {isComplete ? 'Processing Complete' : 'Secure Document Ingestion'}
-          </span>
-          <h3 className="text-base font-extrabold text-white truncate max-w-sm mt-0.5">
-            {fileName}
-          </h3>
-          <p className="text-xs text-slate-400">
-            {(fileSize / (1024 * 1024)).toFixed(2)} MB • Uploading documents
-          </p>
-        </div>
-
-        <div className="w-12 h-12 rounded-2xl bg-[#112347] text-orange-400 flex items-center justify-center shrink-0 border border-blue-800/40">
-          {isComplete ? (
-            <CheckCircle2 className="w-6 h-6 text-emerald-400" />
-          ) : (
-            <ShieldCheck className="w-6 h-6 text-orange-400 animate-pulse" />
-          )}
-        </div>
+      <div className="mb-4">
+        <span className="text-xs font-bold text-orange-400 tracking-wide uppercase">
+          {isComplete ? 'Processing Complete' : 'Secure Document Ingestion'}
+        </span>
+        <h3 className="text-base font-extrabold text-white truncate mt-0.5">
+          {fileName}
+        </h3>
+        <p className="text-xs text-slate-400">
+          {(fileSize / (1024 * 1024)).toFixed(2)} MB • Uploading documents
+        </p>
       </div>
 
       {/* Progress Bar */}

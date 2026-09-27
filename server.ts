@@ -29,6 +29,24 @@ const PORT = 3000;
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
+// Enable CORS for external HTML admin panels, mobile apps, or local client scripts
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+// Serve public directory (including admin.html)
+app.use(express.static(path.join(process.cwd(), 'public')));
+
+app.get(['/admin.html', '/counter'], (req, res) => {
+  res.sendFile(path.join(process.cwd(), 'public', 'admin.html'));
+});
+
 // Storage directory for persistent state
 const DATA_DIR = path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'store.json');
@@ -662,12 +680,97 @@ app.get('/api/orders', (req, res) => {
   res.json({ orders: result, total: result.length });
 });
 
+// Helper to find an order by ID or token (handles 'ORD-XXXX' or 'XXXX' case-insensitively)
+function findOrderByIdOrToken(idOrToken: string): Order | undefined {
+  if (!idOrToken) return undefined;
+  const clean = idOrToken.trim().toUpperCase();
+  return store.orders.find((o) => {
+    const oid = o.id.toUpperCase();
+    return oid === clean || oid === `ORD-${clean}` || oid.replace('ORD-', '') === clean;
+  });
+}
+
 app.get('/api/orders/:id', (req, res) => {
-  const order = store.orders.find((o) => o.id.toUpperCase() === req.params.id.toUpperCase());
+  const order = findOrderByIdOrToken(req.params.id);
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
   res.json(order);
+});
+
+// Fast real-time status check for customer confirm screen
+app.get('/api/orders/:id/status', (req, res) => {
+  const order = findOrderByIdOrToken(req.params.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found', isAccepted: false });
+  }
+  const isAccepted =
+    order.isAccepted === true ||
+    ['Accepted', 'Processing', 'Printing', 'Ready', 'Completed'].includes(order.orderStatus);
+
+  res.json({
+    id: order.id,
+    orderStatus: order.orderStatus,
+    isAccepted,
+    acceptedAt: order.acceptedAt,
+    updatedAt: order.updatedAt,
+  });
+});
+
+// Accept order endpoint (by URL parameter)
+app.post('/api/orders/:id/accept', (req, res) => {
+  const order = findOrderByIdOrToken(req.params.id);
+  if (!order) {
+    return res.status(404).json({ error: 'Order not found' });
+  }
+  const now = new Date().toISOString();
+  order.isAccepted = true;
+  order.acceptedAt = now;
+  order.orderStatus = (req.body.orderStatus as OrderStatus) || 'Accepted';
+  order.updatedAt = now;
+  order.history.push({
+    timestamp: now,
+    status: order.orderStatus,
+    note: req.body.note || `Order accepted by shopkeeper at counter (Token: ${order.id})`,
+    actor: req.body.actor || 'Shopkeeper',
+  });
+  saveStore(store);
+
+  res.json({
+    success: true,
+    message: `Order #${order.id} accepted successfully`,
+    order,
+  });
+});
+
+// Accept order endpoint (by JSON body { token: "..." } or { id: "..." })
+app.post('/api/orders/accept', (req, res) => {
+  const token = (req.body.token || req.body.id || req.body.tokenCode || '').toString();
+  if (!token) {
+    return res.status(400).json({ error: 'Token or Order ID is required' });
+  }
+  const order = findOrderByIdOrToken(token);
+  if (!order) {
+    return res.status(404).json({ error: `Order with token "${token}" not found` });
+  }
+  const now = new Date().toISOString();
+  order.isAccepted = true;
+  order.acceptedAt = now;
+  order.orderStatus = (req.body.orderStatus as OrderStatus) || 'Accepted';
+  order.updatedAt = now;
+  order.history.push({
+    timestamp: now,
+    status: order.orderStatus,
+    note: req.body.note || `Order accepted by shopkeeper at counter (Token: ${order.id})`,
+    actor: req.body.actor || 'Shopkeeper',
+  });
+  saveStore(store);
+
+  res.json({
+    success: true,
+    message: `Order #${order.id} accepted successfully`,
+    order,
+  });
 });
 
 app.post('/api/orders', (req, res) => {
@@ -741,9 +844,11 @@ app.post('/api/orders', (req, res) => {
   };
 
   const requestedId = (id || tokenCode || '').toString().trim().toUpperCase();
-  let orderId = requestedId && requestedId.length === 4 ? requestedId : generate4CharToken();
+  let orderId = (requestedId && (requestedId.startsWith('ORD-') || requestedId.length === 4))
+    ? (requestedId.startsWith('ORD-') ? requestedId : `ORD-${requestedId}`)
+    : `ORD-${generate4CharToken()}`;
   while (store.orders.some((o) => o.id.toUpperCase() === orderId.toUpperCase())) {
-    orderId = generate4CharToken();
+    orderId = `ORD-${generate4CharToken()}`;
   }
   store.nextOrderNumber += 1;
 
@@ -801,7 +906,7 @@ app.post('/api/orders', (req, res) => {
 });
 
 app.patch('/api/orders/:id', (req, res) => {
-  const order = store.orders.find((o) => o.id.toUpperCase() === req.params.id.toUpperCase());
+  const order = findOrderByIdOrToken(req.params.id);
   if (!order) {
     return res.status(404).json({ error: 'Order not found' });
   }
@@ -814,6 +919,12 @@ app.patch('/api/orders/:id', (req, res) => {
   if (orderStatus && orderStatus !== order.orderStatus) {
     const prev = order.orderStatus;
     order.orderStatus = orderStatus as OrderStatus;
+    if (['Accepted', 'Processing', 'Printing', 'Ready', 'Completed'].includes(orderStatus)) {
+      order.isAccepted = true;
+      if (!order.acceptedAt) {
+        order.acceptedAt = now;
+      }
+    }
     order.updatedAt = now;
     order.history.push({
       timestamp: now,
@@ -977,6 +1088,8 @@ app.post('/api/print-jobs', (req, res) => {
 
   // Update order status to Printing
   order.orderStatus = 'Printing';
+  order.isAccepted = true;
+  if (!order.acceptedAt) order.acceptedAt = now;
   order.assignedPrinterId = printer.id;
   order.updatedAt = now;
   order.history.push({

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { OrderTrackingView } from '../../components/customer/OrderTrackingView';
-import { Search, Package, Phone, ArrowRight, Clock, FileText } from 'lucide-react';
+import { Search, Package, Phone, ArrowRight, Clock, FileText, ArrowLeft } from 'lucide-react';
 import { api } from '../../services/api';
 
 export const CustomerTrackPage: React.FC = () => {
@@ -50,10 +50,10 @@ export const CustomerTrackPage: React.FC = () => {
 
   if (activeOrderId) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-4 px-4 pt-4">
         <button
           onClick={() => setActiveOrderId(null)}
-          className="text-xs font-bold text-slate-600 hover:text-slate-900 flex items-center gap-1.5"
+          className="text-xs font-bold text-slate-400 hover:text-white flex items-center gap-1.5 transition"
         >
           ← Search another order
         </button>
@@ -63,16 +63,26 @@ export const CustomerTrackPage: React.FC = () => {
   }
 
   return (
-    <div className="max-w-xl mx-auto space-y-6 pt-4">
+    <div className="max-w-xl mx-auto space-y-6 pt-4 px-4 pb-16">
+      <div>
+        <button
+          onClick={() => navigate('/print')}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#0b162d] text-slate-300 hover:text-white border border-blue-900/50 text-xs font-bold transition active:scale-95"
+        >
+          <ArrowLeft className="w-3.5 h-3.5 text-orange-400" />
+          <span>Back to Print Portal</span>
+        </button>
+      </div>
+
       <div className="text-center space-y-2">
-        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-600 flex items-center justify-center border border-amber-200">
+        <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-500/10 text-amber-400 flex items-center justify-center border border-amber-500/20 shadow-md">
           <Package className="w-7 h-7" />
         </div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
           Track Your Print Order
         </h1>
-        <p className="text-xs sm:text-sm text-slate-500">
-          Enter your Order ID (e.g. <strong className="font-mono text-slate-800">ORD-0001</strong>)
+        <p className="text-xs sm:text-sm text-slate-400">
+          Enter your Order ID (e.g. <strong className="font-mono text-orange-400">ORD-0001</strong>)
           or 10-digit mobile number to see live status.
         </p>
       </div>

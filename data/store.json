@@ -270,183 +270,9 @@
   ],
   "orders": [
     {
-      "id": "PRT-TST123",
-      "orderToken": "PRT-TST123",
-      "createdAt": "2026-09-23T14:04:52.164Z",
-      "updatedAt": "2026-09-23T14:04:52.164Z",
-      "customerName": "Ramesh Kumar",
-      "customerPhone": "9829099887",
-      "customerEmail": "ramesh@example.com",
-      "customer": {
-        "name": "Ramesh Kumar",
-        "mobile": "9829099887",
-        "email": "ramesh@example.com"
-      },
-      "documents": [
-        {
-          "name": "photo.jpg",
-          "size": 204800,
-          "type": "image/jpeg",
-          "printablePages": 1,
-          "pageCount": 1,
-          "copies": 3,
-          "colorMode": "Colour",
-          "paperSize": "A4",
-          "paperType": "Plain Paper",
-          "orientation": "Portrait",
-          "scaling": "Fit to page",
-          "id": "doc-1790172292164-0",
-          "sheetsCount": 3,
-          "ratePerPage": 8,
-          "totalPrice": 24
-        }
-      ],
-      "subtotal": 24,
-      "discountAmount": 0,
-      "totalAmount": 24,
-      "paymentStatus": "PENDING",
-      "paymentMethod": "manual",
-      "orderStatus": "PRINT_PENDING",
-      "separator": "None",
-      "history": [
-        {
-          "timestamp": "2026-09-23T14:04:52.164Z",
-          "status": "PRINT_PENDING",
-          "note": "Order created with Manual Pay at Shop (Pay cash or counter UPI on pickup)",
-          "actor": "Customer"
-        }
-      ]
-    },
-    {
-      "id": "PRT-TEST99",
-      "orderToken": "PRT-TEST99",
-      "createdAt": "2026-09-23T13:55:56.872Z",
-      "updatedAt": "2026-09-23T13:55:56.872Z",
-      "customerName": "Test User",
-      "customerPhone": "9829012345",
-      "customer": {
-        "name": "Test User",
-        "mobile": "9829012345"
-      },
-      "documents": [
-        {
-          "name": "test.pdf",
-          "size": 1024,
-          "type": "application/pdf",
-          "printablePages": 1,
-          "copies": 1,
-          "paperSize": "A4",
-          "colorMode": "B&W",
-          "printStyle": "Single Sided",
-          "paperType": "Plain Paper",
-          "orientation": "Portrait",
-          "scaling": "Fit to page",
-          "id": "doc-1790171756872-0",
-          "sheetsCount": 1,
-          "ratePerPage": 3,
-          "totalPrice": 3
-        }
-      ],
-      "subtotal": 3,
-      "discountAmount": 0,
-      "totalAmount": 3,
-      "paymentStatus": "PENDING",
-      "paymentMethod": "manual",
-      "orderStatus": "PRINT_PENDING",
-      "separator": "None",
-      "history": [
-        {
-          "timestamp": "2026-09-23T13:55:56.872Z",
-          "status": "PRINT_PENDING",
-          "note": "Order created with Manual Pay at Shop (Pay cash or counter UPI on pickup)",
-          "actor": "Customer"
-        }
-      ]
-    },
-    {
-      "id": "ORD-0005",
-      "createdAt": "2026-09-22T14:44:34.865Z",
-      "updatedAt": "2026-09-22T14:44:34.865Z",
-      "customerName": "Rohit Sharma",
-      "customerPhone": "9829112345",
-      "documents": [
-        {
-          "name": "aadhaar.pdf",
-          "type": "pdf",
-          "size": 2048,
-          "pagesCount": 2,
-          "copies": 1,
-          "colorMode": "B&W",
-          "paperSize": "A4",
-          "duplex": false,
-          "printStyle": "Single Sided",
-          "id": "doc-1790088274865-0",
-          "printablePages": 2,
-          "sheetsCount": 2,
-          "ratePerPage": 3,
-          "totalPrice": 6
-        }
-      ],
-      "subtotal": 6,
-      "discountAmount": 0,
-      "totalAmount": 6,
-      "paymentStatus": "Manual Verification",
-      "paymentMethod": "manual",
-      "orderStatus": "Pending",
-      "separator": "None",
-      "history": [
-        {
-          "timestamp": "2026-09-22T14:44:34.865Z",
-          "status": "Pending",
-          "note": "Order created with Manual Pay option (Pay at counter / cash)",
-          "actor": "Customer"
-        }
-      ]
-    },
-    {
-      "id": "ORD-0004",
-      "createdAt": "2026-09-22T14:43:38.759Z",
-      "updatedAt": "2026-09-22T14:43:38.759Z",
-      "customerName": "Test User",
-      "customerPhone": "9876543210",
-      "documents": [
-        {
-          "name": "test.pdf",
-          "type": "pdf",
-          "size": 1024,
-          "pagesCount": 2,
-          "printablePages": null,
-          "copies": 1,
-          "colorMode": "bw",
-          "paperSize": "A4",
-          "duplex": false,
-          "orientation": "portrait",
-          "sheetsCount": null,
-          "ratePerPage": 3,
-          "totalPrice": null,
-          "id": "doc-1790088218759-0"
-        }
-      ],
-      "subtotal": 0,
-      "discountAmount": 0,
-      "totalAmount": 0,
-      "paymentStatus": "Manual Verification",
-      "paymentMethod": "manual",
-      "orderStatus": "Pending",
-      "separator": "None",
-      "history": [
-        {
-          "timestamp": "2026-09-22T14:43:38.759Z",
-          "status": "Pending",
-          "note": "Order created with Manual Pay option (Pay at counter / cash)",
-          "actor": "Customer"
-        }
-      ]
-    },
-    {
       "id": "ORD-0001",
-      "createdAt": "2026-09-20T14:30:24.181Z",
-      "updatedAt": "2026-09-20T14:30:24.181Z",
+      "createdAt": "2026-09-22T14:44:59.317Z",
+      "updatedAt": "2026-09-22T14:44:59.317Z",
       "customerName": "Mahesh Choudhary",
       "customerPhone": "+91 98290 11223",
       "customerEmail": "mahesh.merta@gmail.com",
@@ -485,25 +311,25 @@
       "separator": "B&W Invoice",
       "history": [
         {
-          "timestamp": "2026-09-20T14:30:24.181Z",
+          "timestamp": "2026-09-22T14:44:59.317Z",
           "status": "Pending",
           "note": "Order placed via Customer Print Portal",
           "actor": "Customer"
         },
         {
-          "timestamp": "2026-09-20T14:30:24.181Z",
+          "timestamp": "2026-09-22T14:44:59.317Z",
           "status": "Paid",
           "note": "Payment verified via UPI",
           "actor": "System"
         },
         {
-          "timestamp": "2026-09-20T14:30:24.181Z",
+          "timestamp": "2026-09-22T14:44:59.317Z",
           "status": "Printing",
           "note": "Sent to HP Smart Tank 525",
           "actor": "Sonu Sharma"
         },
         {
-          "timestamp": "2026-09-20T14:30:24.181Z",
+          "timestamp": "2026-09-22T14:44:59.317Z",
           "status": "Completed",
           "note": "Collected by customer",
           "actor": "Sonu Sharma"
@@ -512,8 +338,8 @@
     },
     {
       "id": "ORD-0002",
-      "createdAt": "2026-09-21T14:30:24.181Z",
-      "updatedAt": "2026-09-21T14:30:24.181Z",
+      "createdAt": "2026-09-23T14:44:59.317Z",
+      "updatedAt": "2026-09-23T14:44:59.317Z",
       "customerName": "Pooja Rathore",
       "customerPhone": "+91 94145 66778",
       "documents": [
@@ -552,19 +378,19 @@
       "separator": "B&W Invoice",
       "history": [
         {
-          "timestamp": "2026-09-21T14:30:24.181Z",
+          "timestamp": "2026-09-23T14:44:59.317Z",
           "status": "Pending",
           "note": "Order created",
           "actor": "Customer"
         },
         {
-          "timestamp": "2026-09-21T14:30:24.181Z",
+          "timestamp": "2026-09-23T14:44:59.317Z",
           "status": "Paid",
           "note": "Razorpay payment verified",
           "actor": "System"
         },
         {
-          "timestamp": "2026-09-21T14:30:24.181Z",
+          "timestamp": "2026-09-23T14:44:59.317Z",
           "status": "Completed",
           "note": "Print delivered",
           "actor": "Vikram Singh"
@@ -573,8 +399,8 @@
     },
     {
       "id": "ORD-0003",
-      "createdAt": "2026-09-22T14:30:24.181Z",
-      "updatedAt": "2026-09-22T14:30:24.181Z",
+      "createdAt": "2026-09-24T14:44:59.317Z",
+      "updatedAt": "2026-09-24T14:44:59.317Z",
       "customerName": "Kailash Gehlot",
       "customerPhone": "+91 97841 22334",
       "documents": [
@@ -613,19 +439,19 @@
       "adminNotes": "Customer will collect after Meera Smarak visit",
       "history": [
         {
-          "timestamp": "2026-09-22T14:30:24.181Z",
+          "timestamp": "2026-09-24T14:44:59.317Z",
           "status": "Pending",
           "note": "Order created with Manual Pay option",
           "actor": "Customer"
         },
         {
-          "timestamp": "2026-09-22T14:30:24.181Z",
+          "timestamp": "2026-09-24T14:44:59.317Z",
           "status": "Paid",
           "note": "Cash verified at counter by Operator",
           "actor": "Ramesh Kumar"
         },
         {
-          "timestamp": "2026-09-22T14:30:24.181Z",
+          "timestamp": "2026-09-24T14:44:59.317Z",
           "status": "Ready",
           "note": "Printed on Glossy Paper, kept in pickup tray",
           "actor": "Ramesh Kumar"
@@ -633,43 +459,133 @@
       ]
     }
   ],
-  "printJobs": [
-    {
-      "id": "job-seed-1",
-      "orderId": "ORD-0001",
-      "customerName": "Mahesh Choudhary",
-      "documentName": "Land_Registry_Deed.pdf",
-      "printerId": "prn-hp-525",
-      "printerName": "HP Smart Tank 525",
-      "status": "Completed",
-      "progressPercent": 100,
-      "pages": 6,
-      "copies": 2,
-      "paperSize": "A4",
-      "colorMode": "B&W",
-      "separator": "B&W Invoice",
-      "startedAt": "2026-09-20T14:30:24.181Z",
-      "completedAt": "2026-09-20T14:30:24.181Z"
-    }
-  ],
+  "printJobs": [],
   "notifications": [
     {
-      "id": "notif-1790172292164",
+      "id": "notif-1790261072197",
       "title": "New Customer Order",
-      "message": "Ramesh Kumar placed order #PRT-TST123 for ₹24",
+      "message": "Ramesh placed order #ORD-TEST for ₹3",
       "type": "order",
       "targetUrl": "/admin/orders",
       "read": false,
-      "timestamp": "2026-09-23T14:04:52.164Z"
+      "timestamp": "2026-09-24T14:44:32.197Z"
     },
     {
-      "id": "notif-1790171756872",
+      "id": "notif-1790260326713",
       "title": "New Customer Order",
-      "message": "Test User placed order #PRT-TEST99 for ₹3",
+      "message": "Counter Customer placed order #ORD-JJ7V for ₹92",
       "type": "order",
       "targetUrl": "/admin/orders",
       "read": false,
-      "timestamp": "2026-09-23T13:55:56.872Z"
+      "timestamp": "2026-09-24T14:32:06.713Z"
+    },
+    {
+      "id": "notif-1790260298791",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-7ZJE for ₹92",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:31:38.791Z"
+    },
+    {
+      "id": "notif-1790259942313",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-NG3B for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:25:42.313Z"
+    },
+    {
+      "id": "notif-1790259671480",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #KTQ9 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:21:11.479Z"
+    },
+    {
+      "id": "notif-1790259250931",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-734887 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:14:10.931Z"
+    },
+    {
+      "id": "notif-1790259216234",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-720140 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:13:36.234Z"
+    },
+    {
+      "id": "notif-1790259188730",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-965600 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:13:08.730Z"
+    },
+    {
+      "id": "notif-1790259156119",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-425566 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:12:36.119Z"
+    },
+    {
+      "id": "notif-1790259073228",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-937187 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:11:13.228Z"
+    },
+    {
+      "id": "notif-1790258999439",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-310232 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:09:59.439Z"
+    },
+    {
+      "id": "notif-1790258755998",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-283010 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:05:55.997Z"
+    },
+    {
+      "id": "notif-1790258685333",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-824320 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:04:45.333Z"
+    },
+    {
+      "id": "notif-1790258415277",
+      "title": "New Customer Order",
+      "message": "Counter Customer placed order #ORD-544804 for ₹21",
+      "type": "order",
+      "targetUrl": "/admin/orders",
+      "read": false,
+      "timestamp": "2026-09-24T14:00:15.277Z"
     },
     {
       "id": "notif-1790088274865",
@@ -708,5 +624,5 @@
       "timestamp": "2026-09-22T13:30:24.181Z"
     }
   ],
-  "nextOrderNumber": 6
+  "nextOrderNumber": 4
 }

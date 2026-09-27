@@ -372,6 +372,7 @@ export function calculateDocumentPricing(
     rawStyle.includes('back') || rawStyle.includes('duplex') ? 'Back-to-Back' : 'Single Sided';
 
   const photoCollage: PhotoCollage = doc.photoCollage || 'Original';
+  const sheetsCount = Math.max(1, calculateSheets(printablePages, normPrintStyle, photoCollage) || 1);
 
   const rawColor = String(doc.colorMode || '').toLowerCase();
   const normColorMode: ColorMode =
@@ -393,10 +394,8 @@ export function calculateDocumentPricing(
   }
 
   // Price = ratePerPage * printablePages * copies (or sheets if photo collage scaled)
+  const effectivePages = photoCollage !== 'Original' ? sheetsCount : printablePages;
   const copies = Math.max(1, Number(doc.copies || 1));
-  const baseSheets = Math.max(1, calculateSheets(printablePages, normPrintStyle, photoCollage) || 1);
-  const effectivePages = photoCollage !== 'Original' ? baseSheets : printablePages;
-  const sheetsCount = baseSheets * copies;
   const totalPrice = Number((ratePerPage * effectivePages * copies).toFixed(2)) || 0;
 
   return {
@@ -487,17 +486,85 @@ export function calculateOrderSummary(
 }
 
 /**
- * Centralized order pricing function
- * Accepts order documents or order object and calculates dynamic price
+ * Synchronizes shared print settings from a source configuration across another document,
+ * preserving document identity and authentic per-file page counts while recalculating prices.
  */
-export function calculatePrintPrice(
-  orderOrDocs: { documents: DocumentItem[]; discountCode?: string } | DocumentItem[],
-  pricingRules: PricingRule[] = DEFAULT_PRICING_RULES,
-  discounts: DiscountRule[] = DEFAULT_DISCOUNTS
-) {
-  if (Array.isArray(orderOrDocs)) {
-    return calculateOrderSummary(orderOrDocs, pricingRules, discounts);
-  }
-  return calculateOrderSummary(orderOrDocs.documents, pricingRules, discounts, orderOrDocs.discountCode);
-}
+export function syncDocumentSettings(
+  targetDoc: DocumentItem,
+  sourceSettings: Partial<DocumentItem>,
+  pricingRules: PricingRule[] = DEFAULT_PRICING_RULES
+): DocumentItem {
+  const isPdf =
+    targetDoc.fileType === 'pdf' ||
+    targetDoc.type === 'application/pdf' ||
+    targetDoc.name.toLowerCase().endsWith('.pdf');
 
+  const updated: DocumentItem = {
+    ...targetDoc,
+    colorMode: sourceSettings.colorMode ?? targetDoc.colorMode ?? 'B&W',
+    orientation: sourceSettings.orientation ?? targetDoc.orientation ?? 'Auto',
+    copies: Math.max(1, sourceSettings.copies ?? targetDoc.copies ?? 1),
+    paperSize: sourceSettings.paperSize ?? targetDoc.paperSize ?? 'A4',
+    printStyle: sourceSettings.printStyle ?? targetDoc.printStyle ?? 'Single Sided',
+    paperType: sourceSettings.paperType ?? targetDoc.paperType ?? 'Plain Paper',
+    scaling: sourceSettings.scaling ?? targetDoc.scaling ?? 'Fit to page',
+  };
+
+  // If source is using 'all' pages, synchronize 'all' pages to target
+  if (sourceSettings.pageSelectionMode === 'all') {
+    updated.pageSelectionMode = 'all';
+    updated.pageRange = 'all';
+    updated.selectedPages = Array.from({ length: updated.pageCount }, (_, i) => i + 1);
+  }
+
+  if (isPdf) {
+    // If Aadhaar card A4 layout is active, it generates 1 A4 physical sheet per copy
+    const isAadhaarActive =
+      updated.detectedDocumentType === 'aadhaar_card' && updated.useAadhaarLayout !== false;
+
+    if (isAadhaarActive) {
+      const rule = pricingRules.find(
+        (r) => r.colorMode === updated.colorMode && r.paperSize === (updated.paperSize || 'A4')
+      );
+      const rate = rule?.ratePerPage ?? (updated.colorMode === 'Colour' ? 8.0 : 3.0);
+      const copies = updated.copies || 1;
+      updated.printablePages = 1;
+      updated.selectedPages = [1];
+      updated.sheetsCount = copies;
+      updated.physicalSheets = copies;
+      updated.ratePerPage = rate;
+      updated.subtotal = rate * copies;
+      updated.totalPrice = rate * copies;
+      return updated;
+    }
+
+    const calc = calculatePdfPrice(
+      {
+        pageCount: updated.pageCount,
+        pageRange: updated.pageRange,
+        copies: updated.copies,
+        colorMode: updated.colorMode,
+        printStyle: updated.printStyle,
+        paperSize: updated.paperSize,
+      },
+      pricingRules
+    );
+
+    updated.printablePages = calc.printablePages;
+    updated.selectedPages = calc.selectedPages;
+    updated.sheetsCount = calc.sheetsCount;
+    updated.physicalSheets = calc.sheetsCount;
+    updated.ratePerPage = calc.ratePerPage;
+    updated.subtotal = calc.subtotal;
+    updated.totalPrice = calc.totalPrice;
+  } else {
+    const calc = calculateDocumentPricing(updated, pricingRules);
+    updated.printablePages = calc.printablePages;
+    updated.sheetsCount = calc.sheetsCount;
+    updated.ratePerPage = calc.ratePerPage;
+    updated.subtotal = calc.totalPrice;
+    updated.totalPrice = calc.totalPrice;
+  }
+
+  return updated;
+}

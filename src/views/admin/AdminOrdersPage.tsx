@@ -15,6 +15,7 @@ import {
   RefreshCw,
   FileCheck2,
   AlertCircle,
+  Check,
 } from 'lucide-react';
 
 export const AdminOrdersPage: React.FC = () => {
@@ -28,6 +29,8 @@ export const AdminOrdersPage: React.FC = () => {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [invoiceOrder, setInvoiceOrder] = useState<Order | null>(null);
   const [isManualModalOpen, setIsManualModalOpen] = useState<boolean>(false);
+  const [tokenInput, setTokenInput] = useState<string>('');
+  const [isAcceptingToken, setIsAcceptingToken] = useState<boolean>(false);
 
   const fetchOrders = async () => {
     try {
@@ -52,6 +55,33 @@ export const AdminOrdersPage: React.FC = () => {
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     fetchOrders();
+  };
+
+  const handleAcceptOrder = async (orderIdOrToken: string) => {
+    try {
+      const res = await api.acceptOrder(orderIdOrToken);
+      addToast('success', 'Order Accepted', `Order #${res.order.id} accepted. Customer portal redirected to home!`);
+      fetchOrders();
+    } catch (err: any) {
+      addToast('error', 'Accept Failed', err?.message || 'Could not accept order');
+    }
+  };
+
+  const handleQuickAcceptToken = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const token = tokenInput.trim();
+    if (!token) return;
+    try {
+      setIsAcceptingToken(true);
+      const res = await api.acceptOrder(token);
+      addToast('success', 'Token Accepted', `Token ${res.order.id} accepted! Customer was automatically redirected to Home.`);
+      setTokenInput('');
+      fetchOrders();
+    } catch (err: any) {
+      addToast('error', 'Token Not Found', err?.message || `Could not accept token ${token}`);
+    } finally {
+      setIsAcceptingToken(false);
+    }
   };
 
   const handleOneClickPrint = async (order: Order) => {
@@ -108,6 +138,40 @@ export const AdminOrdersPage: React.FC = () => {
               <span>+ New Walk-in Order</span>
             </button>
           </div>
+        </div>
+
+        {/* Quick Counter Token Accept Bar */}
+        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-[#0b162d] text-white rounded-3xl p-4 sm:p-5 shadow-xl border border-emerald-500/30 flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-ping" />
+              <h3 className="font-extrabold text-sm sm:text-base text-white tracking-tight">
+                Quick Counter Token Accept (काउंटर टोकन स्वीकार करें)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-300 mt-1">
+              Enter customer's token (e.g. <span className="font-mono text-emerald-300 font-bold">8K2P</span> or <span className="font-mono text-emerald-300 font-bold">ORD-8K2P</span>). Accepting will automatically send the customer's portal back to Home!
+            </p>
+          </div>
+
+          <form onSubmit={handleQuickAcceptToken} className="flex items-center gap-2 w-full md:w-auto shrink-0">
+            <input
+              type="text"
+              value={tokenInput}
+              onChange={(e) => setTokenInput(e.target.value.toUpperCase())}
+              placeholder="e.g. 8K2P or ORD-8K2P"
+              maxLength={10}
+              className="px-3.5 py-2.5 bg-slate-800/90 text-white placeholder-slate-400 border border-emerald-500/40 rounded-xl text-xs sm:text-sm font-mono font-bold tracking-wider focus:outline-none focus:ring-2 focus:ring-emerald-400 w-full sm:w-56"
+            />
+            <button
+              type="submit"
+              disabled={!tokenInput.trim() || isAcceptingToken}
+              className="px-4 py-2.5 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 text-slate-950 font-black rounded-xl text-xs sm:text-sm transition shadow-md shrink-0 flex items-center gap-1.5 cursor-pointer active:scale-95"
+            >
+              <Check className="w-4 h-4 stroke-[3]" />
+              <span>{isAcceptingToken ? 'Accepting...' : 'Accept Token'}</span>
+            </button>
+          </form>
         </div>
 
         {/* Filters and Search Bar */}
@@ -192,13 +256,8 @@ export const AdminOrdersPage: React.FC = () => {
                       >
                         <td className="px-5 py-4 whitespace-nowrap">
                           <span className="font-mono font-extrabold text-slate-900 block">
-                            {ord.orderToken || ord.id}
+                            {ord.id}
                           </span>
-                          {ord.orderToken && ord.orderToken !== ord.id && (
-                            <span className="text-[10px] font-mono text-slate-400 block -mt-0.5">
-                              {ord.id}
-                            </span>
-                          )}
                           <span className="text-[11px] text-slate-400">
                             {new Date(ord.createdAt).toLocaleDateString()} •{' '}
                             {new Date(ord.createdAt).toLocaleTimeString([], {
@@ -263,6 +322,18 @@ export const AdminOrdersPage: React.FC = () => {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <div className="flex items-center justify-center gap-2">
+                            {!ord.isAccepted && (
+                              <button
+                                type="button"
+                                onClick={() => handleAcceptOrder(ord.id)}
+                                className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-black transition flex items-center gap-1 shadow-sm active:scale-95"
+                                title="Accept Token & Return Customer to Home"
+                              >
+                                <Check className="w-3.5 h-3.5 stroke-[3]" />
+                                <span>Accept</span>
+                              </button>
+                            )}
+
                             <button
                               type="button"
                               onClick={() => handleOneClickPrint(ord)}

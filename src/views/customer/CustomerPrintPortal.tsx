@@ -88,20 +88,21 @@ export const CustomerPrintPortal: React.FC = () => {
 
   // Handle new uploaded files
   const handleFilesUploaded = (newDocs: DocumentItem[]) => {
-    setDocuments((prev) => [...prev, ...newDocs]);
-    setSelectedDocIndex(documents.length); // select the newly added document
+    setDocuments((prev) => {
+      const newIndex = prev.length;
+      setSelectedDocIndex(newIndex);
+      return [...prev, ...newDocs];
+    });
     navigateToStep(2);
   };
 
   // Recalculate order summary
   const summary = calculateOrderSummary(documents, pricing, discounts, couponCode);
 
-  const handleUpdateDoc = (index: number, updatedDoc: DocumentItem) => {
-    setDocuments((prev) => {
-      const next = [...prev];
-      next[index] = updatedDoc;
-      return next;
-    });
+  const handleUpdateDoc = (updatedDoc: DocumentItem) => {
+    setDocuments((prev) =>
+      prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d))
+    );
   };
 
   const handleRemoveDoc = (index: number) => {
@@ -121,12 +122,17 @@ export const CustomerPrintPortal: React.FC = () => {
   }
 
   const activeDoc = documents[selectedDocIndex] || documents[0];
+  const isImageSession =
+    !!activeDoc &&
+    (activeDoc.fileType === 'image' ||
+      activeDoc.type?.startsWith('image/') ||
+      !!activeDoc.name?.match(/\.(jpg|jpeg|png|webp|bmp|gif|tiff)$/i));
 
   return (
-    <div className="space-y-4 sm:space-y-5 pb-32 px-3 sm:px-4">
+    <div className="space-y-4 sm:space-y-5 pb-32 px-3 sm:px-4 pt-3 sm:pt-4">
       {/* Premium Brand Header - Hidden on Confirm Step */}
       {currentStep !== 3 && (
-        <header className="w-full max-w-xl mx-auto pt-1 sm:pt-2">
+        <header className="w-full max-w-xl mx-auto">
           <div className="bg-[#0b162d]/95 backdrop-blur-md rounded-2xl border border-blue-900/40 p-4 sm:p-5 shadow-xl shadow-black/30 transition-all">
             <div className="flex items-center gap-3.5 sm:gap-4">
               {/* Premium Printer Icon/Logo Container */}
@@ -345,28 +351,42 @@ export const CustomerPrintPortal: React.FC = () => {
             </div>
           </div>
 
-          {/* List of Documents */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
-            {documents.map((doc, idx) => (
-              <DocumentCard
-                key={doc.id}
-                document={doc}
-                index={idx}
-                isSelected={selectedDocIndex === idx}
-                onSelect={() => setSelectedDocIndex(idx)}
-                onEdit={() => setEditorDoc(doc)}
-                onPreview={() => setPreviewDoc(doc)}
-                onRemove={() => handleRemoveDoc(idx)}
-              />
-            ))}
-          </div>
+          {/* List of Documents - Only shown for PDF/other documents; hidden for Image workspace */}
+          {!isImageSession && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
+              {documents.map((doc, idx) => (
+                <DocumentCard
+                  key={doc.id}
+                  document={doc}
+                  index={idx}
+                  isSelected={selectedDocIndex === idx}
+                  onSelect={() => setSelectedDocIndex(idx)}
+                  onEdit={() => setEditorDoc(doc)}
+                  onPreview={() => setPreviewDoc(doc)}
+                  onRemove={() => handleRemoveDoc(idx)}
+                />
+              ))}
+            </div>
+          )}
 
           {/* Active Document Settings Panel */}
           {activeDoc && (
             <DocumentConfigureRouter
+              key={isImageSession ? 'image-workspace' : activeDoc.id}
               document={activeDoc}
+              documents={documents}
+              selectedDocIndex={selectedDocIndex}
+              onSelectDocIndex={setSelectedDocIndex}
               pricingRules={pricing}
-              onChange={(updated) => handleUpdateDoc(selectedDocIndex, updated)}
+              totalDocumentsCount={documents.length}
+              onChange={handleUpdateDoc}
+              onRemoveDoc={handleRemoveDoc}
+              onResetAll={() => {
+                setDocuments([]);
+                setSelectedDocIndex(0);
+                navigateToStep(1);
+              }}
+              onAddDocuments={handleFilesUploaded}
             />
           )}
 
@@ -380,7 +400,7 @@ export const CustomerPrintPortal: React.FC = () => {
             onBack={handleBack}
             backLabel="Back"
             onNext={handleNext}
-            nextLabel="PRINT"
+            nextLabel="Continue to print"
           />
         </div>
       )}
@@ -423,8 +443,7 @@ export const CustomerPrintPortal: React.FC = () => {
         isOpen={!!editorDoc}
         onClose={() => setEditorDoc(null)}
         onSave={(updated) => {
-          const idx = documents.findIndex((d) => d.id === updated.id);
-          if (idx !== -1) handleUpdateDoc(idx, updated);
+          handleUpdateDoc(updated);
         }}
       />
     </div>

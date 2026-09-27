@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, ZoomIn, ZoomOut, RotateCw, Download, FileText, CheckCircle } from 'lucide-react';
+import { X, ZoomIn, ZoomOut, RotateCw, FileText, CheckCircle } from 'lucide-react';
 import { DocumentItem } from '../../types';
 import { PdfPreview } from '../customer/preview/PdfPreview';
 import { useModalScrollLock } from '../../utils/useModalScrollLock';
@@ -152,43 +152,15 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           )}
         </div>
 
-        {/* Bottom Configuration Summary */}
-        <div className="p-4 bg-[#0b162d] border-t border-blue-900/40 flex flex-wrap items-center justify-between gap-3 text-xs">
-          <div className="flex flex-wrap items-center gap-3 text-slate-300">
-            <span>
-              Format:{' '}
-              <strong className="text-white font-semibold">
-                {doc.paperSize} ({doc.printStyle})
-              </strong>
-            </span>
-            <span>
-              Color Mode:{' '}
-              <strong className="text-white font-semibold">{doc.colorMode}</strong>
-            </span>
-            <span>
-              Copies:{' '}
-              <strong className="text-white font-semibold">{doc.copies}</strong>
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2">
-            {doc.url && (
-              <a
-                href={doc.url}
-                download={doc.name}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-blue-800/40 hover:bg-[#112347] rounded-xl text-slate-200 font-medium transition"
-              >
-                <Download className="w-3.5 h-3.5" /> Download File
-              </a>
-            )}
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-bold transition shadow-sm"
-            >
-              Done
-            </button>
-          </div>
+        {/* Bottom Actions */}
+        <div className="p-4 bg-[#0b162d] border-t border-blue-900/40 flex items-center justify-end text-xs">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-5 py-2 bg-orange-500 hover:bg-orange-600 active:scale-95 text-white rounded-xl font-bold transition shadow-sm"
+          >
+            Done
+          </button>
         </div>
       </div>
     </div>
