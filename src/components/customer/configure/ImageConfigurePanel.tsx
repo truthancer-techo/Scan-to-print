@@ -341,6 +341,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const onTouchMove = (e: TouchEvent) => {
       if (activeSlotRef.current.isCropped) return;
 
+      const rect = el.getBoundingClientRect();
+      const canvasW = rect.width || 300;
+      const canvasH = rect.height || 424;
+
       if (e.touches.length >= 2 && isPinching) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -355,10 +359,18 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           const dMidX = curMid.x - startMidX;
           const dMidY = curMid.y - startMidY;
 
+          // Clamping bounds to ensure image stays strictly reachable within A4 page
+          const zFactor = targetZoom / 100;
+          const maxPanX = Math.round(canvasW * Math.max(0.4, zFactor * 0.5));
+          const maxPanY = Math.round(canvasH * Math.max(0.4, zFactor * 0.5));
+
+          const newPanX = Math.max(-maxPanX, Math.min(maxPanX, Math.round(startPanX + dMidX)));
+          const newPanY = Math.max(-maxPanY, Math.min(maxPanY, Math.round(startPanY + dMidY)));
+
           updateActiveSlot({
             zoom: targetZoom,
-            panX: Math.round(startPanX + dMidX),
-            panY: Math.round(startPanY + dMidY),
+            panX: newPanX,
+            panY: newPanY,
           });
         }
       } else if (e.touches.length === 1 && isDragging) {
@@ -368,9 +380,17 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         const dx = e.touches[0].clientX - dragStartX;
         const dy = e.touches[0].clientY - dragStartY;
 
+        const currentZoom = activeSlotRef.current.zoom || 100;
+        const zFactor = currentZoom / 100;
+        const maxPanX = Math.round(canvasW * Math.max(0.4, zFactor * 0.5));
+        const maxPanY = Math.round(canvasH * Math.max(0.4, zFactor * 0.5));
+
+        const newPanX = Math.max(-maxPanX, Math.min(maxPanX, Math.round(dragInitialPanX + dx)));
+        const newPanY = Math.max(-maxPanY, Math.min(maxPanY, Math.round(dragInitialPanY + dy)));
+
         updateActiveSlot({
-          panX: Math.round(dragInitialPanX + dx),
-          panY: Math.round(dragInitialPanY + dy),
+          panX: newPanX,
+          panY: newPanY,
         });
       }
     };
@@ -435,9 +455,21 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         if (isPanning && panStartRef.current) {
           const dx = clientX - panStartRef.current.startX;
           const dy = clientY - panStartRef.current.startY;
+
+          const rect = paperGestureRef.current?.getBoundingClientRect();
+          const canvasW = rect?.width || 300;
+          const canvasH = rect?.height || 424;
+          const currentZoom = activeSlot.zoom || 100;
+          const zFactor = currentZoom / 100;
+          const maxPanX = Math.round(canvasW * Math.max(0.4, zFactor * 0.5));
+          const maxPanY = Math.round(canvasH * Math.max(0.4, zFactor * 0.5));
+
+          const newPanX = Math.max(-maxPanX, Math.min(maxPanX, Math.round(panStartRef.current.initialPanX + dx)));
+          const newPanY = Math.max(-maxPanY, Math.min(maxPanY, Math.round(panStartRef.current.initialPanY + dy)));
+
           updateActiveSlot({
-            panX: Math.round(panStartRef.current.initialPanX + dx),
-            panY: Math.round(panStartRef.current.initialPanY + dy),
+            panX: newPanX,
+            panY: newPanY,
           });
           return;
         }
@@ -1077,11 +1109,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
         {/* The White A4 Paper Sheet */}
         <div className="py-4 flex flex-col items-center justify-center bg-[#050a14] rounded-2xl my-2 p-2 sm:p-4 border border-blue-950/60 overflow-hidden relative">
-          {/* A4 Paper Canvas - Clean A4 proportions, exact 0 padding so image reaches right to corners, overflow-hidden keeps it strictly inside */}
+          {/* A4 Paper Canvas - Clean A4 proportions, exact 0 padding, strictly constrained within border */}
           <div
             ref={paperGestureRef}
             onWheel={handleSlotWheel}
-            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden p-0 touch-none select-none ${
+            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center p-0 touch-none select-none overflow-hidden ${
               isLandscape
                 ? 'w-full max-w-[420px]'
                 : 'w-full max-w-[270px] sm:max-w-[300px]'
@@ -1089,8 +1121,17 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             style={{
               aspectRatio: isLandscape ? '297 / 210' : '210 / 297',
               touchAction: 'none',
+              overflow: 'hidden',
+              contain: 'paint',
+              isolation: 'isolate',
+              clipPath: 'inset(0)',
+              WebkitClipPath: 'inset(0)',
+              WebkitMaskImage: '-webkit-radial-gradient(white, black)',
             }}
           >
+            {/* Crisp Permanent Border Overlay - Guaranteed to sit on top of all images */}
+            <div className="absolute inset-0 pointer-events-none border border-slate-300 rounded-xs z-20" />
+
             {/* Printable Content Area strictly filling 100% of A4 with invisible boundary */}
             <div
               className={`w-full h-full relative overflow-hidden grid border-none ${
@@ -1100,6 +1141,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                 gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
                 touchAction: 'none',
+                overflow: 'hidden',
+                contain: 'paint',
+                clipPath: 'inset(0)',
               }}
             >
               {Array.from({ length: totalSlots }).map((_, slotIdx) => {
@@ -1133,6 +1177,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                           : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs'
                         : 'w-full h-full border-none bg-transparent'
                     }`}
+                    style={{
+                      overflow: 'hidden',
+                      contain: 'paint',
+                      clipPath: 'inset(0)',
+                    }}
                   >
                       {hasImage ? (
                         <div
@@ -1140,7 +1189,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                           className={`w-full h-full relative flex items-center justify-center overflow-hidden touch-none select-none ${
                             isSlotActive && !slotData.isCropped ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
                           }`}
-                          style={{ touchAction: 'none' }}
+                          style={{
+                            touchAction: 'none',
+                            overflow: 'hidden',
+                            contain: 'paint',
+                            clipPath: 'inset(0)',
+                          }}
                         >
                           {/* Inner container with hardware-accelerated pan translation */}
                           <div
