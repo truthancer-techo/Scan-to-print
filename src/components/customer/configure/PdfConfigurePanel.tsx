@@ -478,7 +478,6 @@ export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
               <div className="flex items-center gap-2">
                 <input
                   type="text"
-                  autoFocus
                   value={customRangeInput}
                   onChange={(e) => handleCustomRangeInputChange(e.target.value)}
                   placeholder={`e.g. 1-3, 5, 7-${doc.pageCount}`}
