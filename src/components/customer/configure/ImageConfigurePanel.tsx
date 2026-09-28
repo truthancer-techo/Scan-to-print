@@ -229,8 +229,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const [isPinching, setIsPinching] = useState(false);
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
-  const pinchStartRef = useRef<{ initialDistance: number; initialZoom: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
+  const slotGestureRef = useRef<HTMLDivElement | null>(null);
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
 
   const startCropDrag = (e: React.MouseEvent | React.TouchEvent, handle: 'top' | 'bottom' | 'left' | 'right') => {
@@ -250,32 +250,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     setDraggingHandle(handle);
   };
 
-  const startPan = (e: React.MouseEvent | React.TouchEvent) => {
-    if (activeSlot.isCropped) return;
-    if ('cancelable' in e && e.cancelable) {
-      e.preventDefault();
-    }
-    e.stopPropagation();
-
-    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-
-    panStartRef.current = {
-      startX: clientX,
-      startY: clientY,
-      initialPanX: activeSlot.panX || 0,
-      initialPanY: activeSlot.panY || 0,
-    };
-    setIsPanning(true);
-  };
-
-  const handlePanPointerDown = (e: React.PointerEvent) => {
+  // Desktop mouse drag to pan
+  const startPan = (e: React.MouseEvent) => {
     if (activeSlot.isCropped) return;
     e.preventDefault();
     e.stopPropagation();
-    try {
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-    } catch (_) {}
+
     panStartRef.current = {
       startX: e.clientX,
       startY: e.clientY,
@@ -283,29 +263,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       initialPanY: activeSlot.panY || 0,
     };
     setIsPanning(true);
-  };
-
-  // Two-finger pinch to zoom on mobile
-  const handleSlotTouchStart = (e: React.TouchEvent) => {
-    if (activeSlot.isCropped) return;
-
-    if (e.touches.length === 2) {
-      if (e.cancelable) e.preventDefault();
-      e.stopPropagation();
-      setIsPanning(false);
-      panStartRef.current = null;
-
-      const t1 = e.touches[0];
-      const t2 = e.touches[1];
-      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-      pinchStartRef.current = {
-        initialDistance: dist > 0 ? dist : 1,
-        initialZoom: activeSlot.zoom || 100,
-      };
-      setIsPinching(true);
-    } else if (e.touches.length === 1) {
-      startPan(e);
-    }
   };
 
   // Mouse wheel zoom on desktop
@@ -318,6 +275,109 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const newZoom = Math.min(300, Math.max(50, currentZoom + delta));
     updateActiveSlot({ zoom: newZoom });
   };
+
+  // Dedicated, reliable native touch handler for mobile: 1-finger pan & 2-finger pinch-to-zoom
+  useEffect(() => {
+    const el = slotGestureRef.current;
+    if (!el) return;
+
+    let startDist = 0;
+    let startZoom = 100;
+    let isPinchingGesture = false;
+    let isDraggingGesture = false;
+    let startX = 0;
+    let startY = 0;
+    let initPanX = 0;
+    let initPanY = 0;
+
+    const onTouchStart = (e: TouchEvent) => {
+      if (activeSlot.isCropped) return;
+
+      if (e.touches.length === 2) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+        isPinchingGesture = true;
+        isDraggingGesture = false;
+        setIsPinching(true);
+        setIsPanning(false);
+
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        startDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        startZoom = activeSlot.zoom || 100;
+      } else if (e.touches.length === 1) {
+        isDraggingGesture = true;
+        isPinchingGesture = false;
+        setIsPanning(true);
+        setIsPinching(false);
+
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        initPanX = activeSlot.panX || 0;
+        initPanY = activeSlot.panY || 0;
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      if (activeSlot.isCropped) return;
+
+      if (e.touches.length >= 2) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        const t1 = e.touches[0];
+        const t2 = e.touches[1];
+        const curDist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        if (startDist > 0) {
+          const factor = curDist / startDist;
+          const newZoom = Math.min(300, Math.max(50, Math.round(startZoom * factor)));
+          updateActiveSlot({ zoom: newZoom });
+        }
+      } else if (e.touches.length === 1 && isDraggingGesture) {
+        if (e.cancelable) e.preventDefault();
+        e.stopPropagation();
+
+        const dx = e.touches[0].clientX - startX;
+        const dy = e.touches[0].clientY - startY;
+        updateActiveSlot({
+          panX: Math.round(initPanX + dx),
+          panY: Math.round(initPanY + dy),
+        });
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length === 1) {
+        // Smoothly transition from pinch back to 1-finger drag
+        isPinchingGesture = false;
+        isDraggingGesture = true;
+        setIsPinching(false);
+        setIsPanning(true);
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+        initPanX = activeSlot.panX || 0;
+        initPanY = activeSlot.panY || 0;
+      } else if (e.touches.length === 0) {
+        isPinchingGesture = false;
+        isDraggingGesture = false;
+        setIsPinching(false);
+        setIsPanning(false);
+        startDist = 0;
+      }
+    };
+
+    el.addEventListener('touchstart', onTouchStart, { passive: false });
+    el.addEventListener('touchmove', onTouchMove, { passive: false });
+    el.addEventListener('touchend', onTouchEnd, { passive: false });
+    el.addEventListener('touchcancel', onTouchEnd, { passive: false });
+
+    return () => {
+      el.removeEventListener('touchstart', onTouchStart);
+      el.removeEventListener('touchmove', onTouchMove);
+      el.removeEventListener('touchend', onTouchEnd);
+      el.removeEventListener('touchcancel', onTouchEnd);
+    };
+  }, [activeSlot.isCropped, activeSlot.zoom, activeSlot.panX, activeSlot.panY, activeSlotIndex]);
 
   useEffect(() => {
     if (!draggingHandle && !isPanning && !isPinching) return;
@@ -339,19 +399,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       // Prevent browser default scroll behavior
       if (e.cancelable) {
         e.preventDefault();
-      }
-
-      // Handle two-finger pinch to zoom
-      if ('touches' in e && (e as TouchEvent).touches.length === 2 && pinchStartRef.current) {
-        const t1 = (e as TouchEvent).touches[0];
-        const t2 = (e as TouchEvent).touches[1];
-        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
-        if (pinchStartRef.current.initialDistance > 0) {
-          const scale = currentDist / pinchStartRef.current.initialDistance;
-          const calculatedZoom = Math.min(300, Math.max(50, Math.round(pinchStartRef.current.initialZoom * scale)));
-          updateActiveSlot({ zoom: calculatedZoom });
-        }
-        return;
       }
 
       const clientX = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientX : (e as MouseEvent).clientX;
@@ -400,7 +447,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       setIsPanning(false);
       setIsPinching(false);
       panStartRef.current = null;
-      pinchStartRef.current = null;
       document.documentElement.style.overflow = origHtmlOverflow;
       document.documentElement.style.touchAction = origHtmlTouchAction;
       document.body.style.overflow = origBodyOverflow;
@@ -1010,23 +1056,42 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                 <span className="flex items-center gap-1.5 text-blue-400 font-medium">
                   <ZoomIn className="w-3.5 h-3.5" /> 2-Finger Pinch to Zoom
                 </span>
-                {activeSlot.zoom && activeSlot.zoom !== 100 ? (
-                  <span className="text-[10px] font-mono text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded-md border border-amber-800/40">
-                    {activeSlot.zoom}%
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {/* Quick 1-tap zoom controls */}
+                <div className="flex items-center gap-1 bg-[#0b1730] px-1.5 py-0.5 rounded-lg border border-blue-900/40 shadow-xs">
+                  <button
+                    type="button"
+                    onClick={() => updateActiveSlot({ zoom: Math.max(50, (activeSlot.zoom || 100) - 10) })}
+                    className="w-5 h-5 rounded bg-blue-950 hover:bg-blue-900 text-slate-200 flex items-center justify-center text-[11px] font-bold active:scale-95 transition"
+                    title="Zoom Out"
+                  >
+                    -
+                  </button>
+                  <span className="text-[11px] font-mono font-bold text-amber-300 min-w-[34px] text-center select-none">
+                    {activeSlot.zoom || 100}%
                   </span>
+                  <button
+                    type="button"
+                    onClick={() => updateActiveSlot({ zoom: Math.min(300, (activeSlot.zoom || 100) + 10) })}
+                    className="w-5 h-5 rounded bg-blue-950 hover:bg-blue-900 text-slate-200 flex items-center justify-center text-[11px] font-bold active:scale-95 transition"
+                    title="Zoom In"
+                  >
+                    +
+                  </button>
+                </div>
+                {(activeSlot.panX || activeSlot.panY || (activeSlot.zoom && activeSlot.zoom !== 100)) ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      updateActiveSlot({ panX: 0, panY: 0, zoom: 100 });
+                    }}
+                    className="text-[10px] text-orange-400 hover:text-orange-300 font-bold underline shrink-0 active:scale-95"
+                  >
+                    Reset
+                  </button>
                 ) : null}
               </div>
-              {(activeSlot.panX || activeSlot.panY || (activeSlot.zoom && activeSlot.zoom !== 100)) ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    updateActiveSlot({ panX: 0, panY: 0, zoom: 100 });
-                  }}
-                  className="text-[10px] text-orange-400 hover:text-orange-300 font-bold underline shrink-0 active:scale-95"
-                >
-                  Reset Position & Zoom
-                </button>
-              ) : null}
             </div>
           )}
         </div>
@@ -1047,22 +1112,22 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         </div>
 
         {/* The White A4 Paper Sheet */}
-        <div className="py-6 flex flex-col items-center justify-center bg-[#050a14] rounded-2xl my-3 p-3 sm:p-4 border border-blue-950/60 overflow-hidden relative">
-          {/* White Paper Canvas - Real A4 Paper Sheet with visible crisp border & margins */}
+        <div className="py-4 flex flex-col items-center justify-center bg-[#050a14] rounded-2xl my-2 p-2 sm:p-4 border border-blue-950/60 overflow-hidden relative">
+          {/* A4 Paper Canvas - Clean A4 proportions, exact 0 padding so image reaches right to corners, overflow-hidden keeps it strictly inside */}
           <div
-            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border-2 border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden p-3 sm:p-4 ${
+            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden p-0 ${
               isLandscape
-                ? 'w-full max-w-[440px]'
-                : 'w-full max-w-[280px] sm:max-w-[320px]'
+                ? 'w-full max-w-[420px]'
+                : 'w-full max-w-[270px] sm:max-w-[300px]'
             }`}
             style={{
               aspectRatio: isLandscape ? '297 / 210' : '210 / 297',
             }}
           >
-            {/* Printable Content Area with Invisible Border (overflow-hidden) strictly preventing image from going outside */}
+            {/* Printable Content Area strictly filling 100% of A4 with invisible boundary */}
             <div
               className={`w-full h-full relative overflow-hidden grid border-none ${
-                totalSlots > 1 ? 'gap-1' : ''
+                totalSlots > 1 ? 'gap-1 p-1 bg-slate-100/50' : 'p-0 bg-transparent'
               }`}
               style={{
                 gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
@@ -1104,9 +1169,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                   >
                       {hasImage ? (
                         <div
-                          onPointerDown={isSlotActive && !slotData.isCropped ? handlePanPointerDown : undefined}
+                          ref={isSlotActive ? (el) => { activeSlotContainerRef.current = el; slotGestureRef.current = el; } : undefined}
                           onMouseDown={isSlotActive && !slotData.isCropped ? startPan : undefined}
-                          onTouchStart={isSlotActive && !slotData.isCropped ? handleSlotTouchStart : undefined}
                           onWheel={isSlotActive && !slotData.isCropped ? handleSlotWheel : undefined}
                           className={`w-full h-full relative flex items-center justify-center overflow-hidden touch-none select-none ${
                             isSlotActive && !slotData.isCropped ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
