@@ -22,6 +22,7 @@ import {
   ZoomIn,
   Grid,
   Image as ImageIcon,
+  Move,
 } from 'lucide-react';
 import { calculateDocumentPricing } from '../../../utils/pricing';
 
@@ -48,6 +49,8 @@ export interface SlotSetting {
   zoom: number; // 50 to 200
   isCropped?: boolean;
   crop?: SlotCrop;
+  panX?: number; // horizontal offset in px
+  panY?: number; // vertical offset in px
 }
 
 interface ImageConfigurePanelProps {
@@ -221,9 +224,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     updateActiveSlot({ rotation: nextRot });
   };
 
-  // Crop Dragging State & Container Ref
+  // Crop & Pan State & Container Ref
   const [draggingHandle, setDraggingHandle] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewBoxRef = useRef<HTMLDivElement | null>(null);
 
   const startCropDrag = (e: React.MouseEvent | React.TouchEvent, handle: 'top' | 'bottom' | 'left' | 'right') => {
     e.preventDefault();
@@ -231,65 +237,131 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     setDraggingHandle(handle);
   };
 
+  const startPan = (e: React.MouseEvent | React.TouchEvent) => {
+    if (activeSlot.isCropped) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+
+    panStartRef.current = {
+      startX: clientX,
+      startY: clientY,
+      initialPanX: activeSlot.panX || 0,
+      initialPanY: activeSlot.panY || 0,
+    };
+    setIsPanning(true);
+  };
+
   useEffect(() => {
-    if (!draggingHandle) return;
+    if (!draggingHandle && !isPanning) return;
+
+    // Lock page scrolling while user is interacting with crop handles or moving the image
+    const origOverflow = document.body.style.overflow;
+    const origTouchAction = document.body.style.touchAction;
+    document.body.style.overflow = 'hidden';
+    document.body.style.touchAction = 'none';
+
+    let animFrameId: number | null = null;
 
     const handlePointerMove = (e: MouseEvent | TouchEvent) => {
-      if (!activeSlotContainerRef.current) return;
-      const rect = activeSlotContainerRef.current.getBoundingClientRect();
+      // Prevent browser default scroll behavior
+      if (e.cancelable) {
+        e.preventDefault();
+      }
+
       const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
       const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
 
-      const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
-      const newCrop = { ...currentCrop };
+      if (animFrameId) cancelAnimationFrame(animFrameId);
 
-      if (draggingHandle === 'top') {
-        const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), ((clientY - rect.top) / rect.height) * 100));
-        newCrop.top = Math.round(topPct);
-      } else if (draggingHandle === 'bottom') {
-        const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((rect.bottom - clientY) / rect.height) * 100));
-        newCrop.bottom = Math.round(bottomPct);
-      } else if (draggingHandle === 'left') {
-        const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), ((clientX - rect.left) / rect.width) * 100));
-        newCrop.left = Math.round(leftPct);
-      } else if (draggingHandle === 'right') {
-        const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((rect.right - clientX) / rect.width) * 100));
-        newCrop.right = Math.round(rightPct);
-      }
+      animFrameId = requestAnimationFrame(() => {
+        if (isPanning && panStartRef.current) {
+          const dx = clientX - panStartRef.current.startX;
+          const dy = clientY - panStartRef.current.startY;
+          updateActiveSlot({
+            panX: Math.round(panStartRef.current.initialPanX + dx),
+            panY: Math.round(panStartRef.current.initialPanY + dy),
+          });
+          return;
+        }
 
-      updateActiveSlot({ crop: newCrop });
+        if (draggingHandle && activeSlotContainerRef.current) {
+          const rect = activeSlotContainerRef.current.getBoundingClientRect();
+          const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
+          const newCrop = { ...currentCrop };
+
+          if (draggingHandle === 'top') {
+            const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), ((clientY - rect.top) / rect.height) * 100));
+            newCrop.top = Math.round(topPct);
+          } else if (draggingHandle === 'bottom') {
+            const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((rect.bottom - clientY) / rect.height) * 100));
+            newCrop.bottom = Math.round(bottomPct);
+          } else if (draggingHandle === 'left') {
+            const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), ((clientX - rect.left) / rect.width) * 100));
+            newCrop.left = Math.round(leftPct);
+          } else if (draggingHandle === 'right') {
+            const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((rect.right - clientX) / rect.width) * 100));
+            newCrop.right = Math.round(rightPct);
+          }
+
+          updateActiveSlot({ crop: newCrop });
+        }
+      });
     };
 
     const handlePointerUp = () => {
+      if (animFrameId) cancelAnimationFrame(animFrameId);
       setDraggingHandle(null);
+      setIsPanning(false);
+      panStartRef.current = null;
+      document.body.style.overflow = origOverflow;
+      document.body.style.touchAction = origTouchAction;
     };
 
-    window.addEventListener('mousemove', handlePointerMove);
+    window.addEventListener('mousemove', handlePointerMove, { passive: false });
     window.addEventListener('mouseup', handlePointerUp);
     window.addEventListener('touchmove', handlePointerMove, { passive: false });
     window.addEventListener('touchend', handlePointerUp);
 
     return () => {
+      if (animFrameId) cancelAnimationFrame(animFrameId);
+      document.body.style.overflow = origOverflow;
+      document.body.style.touchAction = origTouchAction;
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', handlePointerUp);
       window.removeEventListener('touchmove', handlePointerMove);
       window.removeEventListener('touchend', handlePointerUp);
     };
-  }, [draggingHandle, activeSlot.crop]);
+  }, [draggingHandle, isPanning, activeSlot.crop, activeSlot.panX, activeSlot.panY]);
 
-  // Crop toggle
+  // Crop toggle with auto-scroll to preview
   const handleToggleCrop = () => {
     const nextCrop = !activeSlot.isCropped;
     updateActiveSlot({
       isCropped: nextCrop,
       crop: activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 },
     });
+    if (nextCrop && previewBoxRef.current) {
+      setTimeout(() => {
+        previewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
+    }
   };
 
   // Reset crop
   const handleResetCrop = () => {
     updateActiveSlot({
       crop: { top: 0, bottom: 0, left: 0, right: 0 },
+    });
+  };
+
+  // Reset position (Pan)
+  const handleResetPan = () => {
+    updateActiveSlot({
+      panX: 0,
+      panY: 0,
     });
   };
 
@@ -309,6 +381,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       zoom: 100,
       isCropped: false,
       crop: { top: 0, bottom: 0, left: 0, right: 0 },
+      panX: 0,
+      panY: 0,
     });
   };
 
@@ -833,7 +907,26 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           {activeSlot.isCropped && (
             <div className="text-[11px] text-blue-300/90 bg-blue-950/40 border border-blue-800/40 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
-              <span>Crop Mode: Drag the 4 square handles (Top, Bottom, Left, Right) in the preview to crop.</span>
+              <span>Crop Mode: Drag the 4 square handles (Top, Bottom, Left, Right) in preview to crop. Outside parts remain visible.</span>
+            </div>
+          )}
+
+          {/* Status Hint when Crop is Off */}
+          {!activeSlot.isCropped && activeSlot.imageUrl && (
+            <div className="flex items-center justify-between text-[11px] text-slate-300 bg-blue-950/30 border border-blue-900/40 rounded-xl px-3 py-2 flex-wrap gap-2">
+              <div className="flex items-center gap-1.5 text-slate-300">
+                <Move className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                <span>Drag directly on the preview image to move & position it</span>
+              </div>
+              {(activeSlot.panX || activeSlot.panY) ? (
+                <button
+                  type="button"
+                  onClick={handleResetPan}
+                  className="text-[10px] text-orange-400 hover:text-orange-300 font-bold underline shrink-0 active:scale-95"
+                >
+                  Reset Position
+                </button>
+              ) : null}
             </div>
           )}
         </div>
@@ -842,7 +935,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       {/* ============================================================== */}
       {/* 6. LIVE A4 PRINT PREVIEW                                      */}
       {/* ============================================================== */}
-      <div className="bg-[#070e1c] rounded-3xl border border-blue-900/60 p-4 sm:p-5 shadow-2xl shadow-black/60 relative overflow-hidden">
+      <div
+        ref={previewBoxRef}
+        className="bg-[#070e1c] rounded-3xl border border-blue-900/60 p-4 sm:p-5 shadow-2xl shadow-black/60 relative overflow-hidden"
+      >
         {/* Header: Live A4 Print Preview */}
         <div className="flex items-center justify-between pb-3.5 border-b border-blue-900/40 gap-2">
           <span className="font-extrabold text-sm sm:text-base text-white tracking-tight">
@@ -902,88 +998,113 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                       }`}
                     >
                       {hasImage ? (
-                        <div className="w-full h-full relative flex items-center justify-center overflow-hidden">
-                          <img
-                            src={slotData.imageUrl}
-                            alt={`Slot ${slotIdx + 1}`}
-                            className="transition-transform duration-200 pointer-events-none select-none"
+                        <div
+                          onMouseDown={isSlotActive && !slotData.isCropped ? startPan : undefined}
+                          onTouchStart={isSlotActive && !slotData.isCropped ? startPan : undefined}
+                          className={`w-full h-full relative flex items-center justify-center overflow-hidden touch-none select-none ${
+                            isSlotActive && !slotData.isCropped ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
+                          }`}
+                          style={{ touchAction: 'none' }}
+                        >
+                          {/* Inner container with hardware-accelerated pan translation */}
+                          <div
+                            className={`w-full h-full relative flex items-center justify-center ${
+                              isPanning ? 'transition-none' : 'transition-transform duration-100 ease-out'
+                            }`}
                             style={{
-                              width: '100%',
-                              height: '100%',
-                              objectFit,
-                              clipPath: (slotData.isCropped || hasCrop)
-                                ? `inset(${slotCrop.top}% ${slotCrop.right}% ${slotCrop.bottom}% ${slotCrop.left}%)`
-                                : 'none',
-                              transform: `rotate(${slotData.rotation || 0}deg) scale(${
-                                (slotData.zoom || 100) / 100
-                              })`,
-                              filter: isGrayscale ? 'grayscale(100%)' : 'none',
+                              transform: `translate3d(${slotData.panX || 0}px, ${slotData.panY || 0}px, 0)`,
+                              willChange: isPanning ? 'transform' : 'auto',
                             }}
-                          />
+                          >
+                            <img
+                              src={slotData.imageUrl}
+                              alt={`Slot ${slotIdx + 1}`}
+                              className="pointer-events-none select-none max-w-none transition-none"
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                objectFit,
+                                clipPath: (!slotData.isCropped && hasCrop)
+                                  ? `inset(${slotCrop.top}% ${slotCrop.right}% ${slotCrop.bottom}% ${slotCrop.left}%)`
+                                  : 'none',
+                                transform: `rotate(${slotData.rotation || 0}deg) scale(${
+                                  (slotData.zoom || 100) / 100
+                                })`,
+                                filter: isGrayscale ? 'grayscale(100%)' : 'none',
+                              }}
+                            />
 
-                          {/* Crop Box Overlay with exactly 4 edge-center handles (Only when Crop mode is active) */}
-                          {slotData.isCropped && isSlotActive && (
-                            <div className="absolute inset-0 pointer-events-none z-10 overflow-hidden">
-                              {/* The Bounding Crop Frame */}
+                            {/* Crop Box Overlay with exactly 4 edge-center handles (Only when Crop mode is active) */}
+                            {slotData.isCropped && isSlotActive && (
                               <div
-                                className="absolute border-2 border-blue-500"
-                                style={{
-                                  top: `${slotCrop.top}%`,
-                                  bottom: `${slotCrop.bottom}%`,
-                                  left: `${slotCrop.left}%`,
-                                  right: `${slotCrop.right}%`,
-                                  boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.45)',
-                                }}
+                                className="absolute inset-0 pointer-events-none z-10 overflow-hidden touch-none"
+                                style={{ touchAction: 'none' }}
                               >
-                                {/* Diagonal Cross Guidelines (matching reference image) */}
-                                <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-blue-500" strokeWidth="1" opacity="0.8">
-                                  <line x1="0" y1="0" x2="100%" y2="100%" strokeDasharray="3 2" />
-                                  <line x1="100%" y1="0" x2="0" y2="100%" strokeDasharray="3 2" />
-                                </svg>
-
-                                {/* 4 Square Handles ONLY in the middle of Top, Bottom, Left, and Right (No corner handles) */}
-                                {/* 1. TOP HANDLE (Up middle) */}
+                                {/* The Bounding Crop Frame */}
                                 <div
-                                  onMouseDown={(e) => startCropDrag(e, 'top')}
-                                  onTouchStart={(e) => startCropDrag(e, 'top')}
-                                  className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30"
-                                  title="Crop Top"
+                                  className="absolute border-2 border-blue-500"
+                                  style={{
+                                    top: `${slotCrop.top}%`,
+                                    bottom: `${slotCrop.bottom}%`,
+                                    left: `${slotCrop.left}%`,
+                                    right: `${slotCrop.right}%`,
+                                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.48)',
+                                  }}
                                 >
-                                  <div className="w-1 h-1 bg-blue-600 rounded-full" />
-                                </div>
+                                  {/* Diagonal Cross Guidelines (matching reference image) */}
+                                  <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-blue-500" strokeWidth="1" opacity="0.8">
+                                    <line x1="0" y1="0" x2="100%" y2="100%" strokeDasharray="3 2" />
+                                    <line x1="100%" y1="0" x2="0" y2="100%" strokeDasharray="3 2" />
+                                  </svg>
 
-                                {/* 2. BOTTOM HANDLE (Down middle) */}
-                                <div
-                                  onMouseDown={(e) => startCropDrag(e, 'bottom')}
-                                  onTouchStart={(e) => startCropDrag(e, 'bottom')}
-                                  className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30"
-                                  title="Crop Bottom"
-                                >
-                                  <div className="w-1 h-1 bg-blue-600 rounded-full" />
-                                </div>
+                                  {/* 4 Square Handles ONLY in the middle of Top, Bottom, Left, and Right (No corner handles) */}
+                                  {/* 1. TOP HANDLE (Up middle) */}
+                                  <div
+                                    onMouseDown={(e) => startCropDrag(e, 'top')}
+                                    onTouchStart={(e) => startCropDrag(e, 'top')}
+                                    className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    style={{ touchAction: 'none' }}
+                                    title="Crop Top"
+                                  >
+                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                  </div>
 
-                                {/* 3. LEFT HANDLE (Left middle) */}
-                                <div
-                                  onMouseDown={(e) => startCropDrag(e, 'left')}
-                                  onTouchStart={(e) => startCropDrag(e, 'left')}
-                                  className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30"
-                                  title="Crop Left"
-                                >
-                                  <div className="w-1 h-1 bg-blue-600 rounded-full" />
-                                </div>
+                                  {/* 2. BOTTOM HANDLE (Down middle) */}
+                                  <div
+                                    onMouseDown={(e) => startCropDrag(e, 'bottom')}
+                                    onTouchStart={(e) => startCropDrag(e, 'bottom')}
+                                    className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    style={{ touchAction: 'none' }}
+                                    title="Crop Bottom"
+                                  >
+                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                  </div>
 
-                                {/* 4. RIGHT HANDLE (Right middle) */}
-                                <div
-                                  onMouseDown={(e) => startCropDrag(e, 'right')}
-                                  onTouchStart={(e) => startCropDrag(e, 'right')}
-                                  className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30"
-                                  title="Crop Right"
-                                >
-                                  <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                  {/* 3. LEFT HANDLE (Left middle) */}
+                                  <div
+                                    onMouseDown={(e) => startCropDrag(e, 'left')}
+                                    onTouchStart={(e) => startCropDrag(e, 'left')}
+                                    className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    style={{ touchAction: 'none' }}
+                                    title="Crop Left"
+                                  >
+                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                  </div>
+
+                                  {/* 4. RIGHT HANDLE (Right middle) */}
+                                  <div
+                                    onMouseDown={(e) => startCropDrag(e, 'right')}
+                                    onTouchStart={(e) => startCropDrag(e, 'right')}
+                                    className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    style={{ touchAction: 'none' }}
+                                    title="Crop Right"
+                                  >
+                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                  </div>
                                 </div>
                               </div>
-                            </div>
-                          )}
+                            )}
+                          </div>
                         </div>
                       ) : (
                         <div className="text-center p-1">
