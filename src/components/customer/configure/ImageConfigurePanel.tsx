@@ -232,14 +232,27 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
 
   const startCropDrag = (e: React.MouseEvent | React.TouchEvent, handle: 'top' | 'bottom' | 'left' | 'right') => {
+    if ('cancelable' in e && e.cancelable) {
+      e.preventDefault();
+    }
+    e.stopPropagation();
+    setDraggingHandle(handle);
+  };
+
+  const handleHandlePointerDown = (e: React.PointerEvent, handle: 'top' | 'bottom' | 'left' | 'right') => {
     e.preventDefault();
     e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
     setDraggingHandle(handle);
   };
 
   const startPan = (e: React.MouseEvent | React.TouchEvent) => {
     if (activeSlot.isCropped) return;
-    e.preventDefault();
+    if ('cancelable' in e && e.cancelable) {
+      e.preventDefault();
+    }
     e.stopPropagation();
 
     const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -254,25 +267,46 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     setIsPanning(true);
   };
 
+  const handlePanPointerDown = (e: React.PointerEvent) => {
+    if (activeSlot.isCropped) return;
+    e.preventDefault();
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+    panStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialPanX: activeSlot.panX || 0,
+      initialPanY: activeSlot.panY || 0,
+    };
+    setIsPanning(true);
+  };
+
   useEffect(() => {
     if (!draggingHandle && !isPanning) return;
 
-    // Lock page scrolling while user is interacting with crop handles or moving the image
-    const origOverflow = document.body.style.overflow;
-    const origTouchAction = document.body.style.touchAction;
+    // Lock page scrolling completely while user is interacting with crop handles or moving the image
+    const origHtmlOverflow = document.documentElement.style.overflow;
+    const origHtmlTouchAction = document.documentElement.style.touchAction;
+    const origBodyOverflow = document.body.style.overflow;
+    const origBodyTouchAction = document.body.style.touchAction;
+
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.touchAction = 'none';
     document.body.style.overflow = 'hidden';
     document.body.style.touchAction = 'none';
 
     let animFrameId: number | null = null;
 
-    const handlePointerMove = (e: MouseEvent | TouchEvent) => {
+    const handlePointerMove = (e: MouseEvent | TouchEvent | PointerEvent) => {
       // Prevent browser default scroll behavior
       if (e.cancelable) {
         e.preventDefault();
       }
 
-      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+      const clientX = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientY : (e as MouseEvent).clientY;
 
       if (animFrameId) cancelAnimationFrame(animFrameId);
 
@@ -316,25 +350,49 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       setDraggingHandle(null);
       setIsPanning(false);
       panStartRef.current = null;
-      document.body.style.overflow = origOverflow;
-      document.body.style.touchAction = origTouchAction;
+      document.documentElement.style.overflow = origHtmlOverflow;
+      document.documentElement.style.touchAction = origHtmlTouchAction;
+      document.body.style.overflow = origBodyOverflow;
+      document.body.style.touchAction = origBodyTouchAction;
     };
 
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', handlePointerUp);
+    window.addEventListener('pointercancel', handlePointerUp);
     window.addEventListener('mousemove', handlePointerMove, { passive: false });
     window.addEventListener('mouseup', handlePointerUp);
     window.addEventListener('touchmove', handlePointerMove, { passive: false });
     window.addEventListener('touchend', handlePointerUp);
+    window.addEventListener('touchcancel', handlePointerUp);
 
     return () => {
       if (animFrameId) cancelAnimationFrame(animFrameId);
-      document.body.style.overflow = origOverflow;
-      document.body.style.touchAction = origTouchAction;
+      document.documentElement.style.overflow = origHtmlOverflow;
+      document.documentElement.style.touchAction = origHtmlTouchAction;
+      document.body.style.overflow = origBodyOverflow;
+      document.body.style.touchAction = origBodyTouchAction;
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointercancel', handlePointerUp);
       window.removeEventListener('mousemove', handlePointerMove);
       window.removeEventListener('mouseup', handlePointerUp);
       window.removeEventListener('touchmove', handlePointerMove);
       window.removeEventListener('touchend', handlePointerUp);
+      window.removeEventListener('touchcancel', handlePointerUp);
     };
   }, [draggingHandle, isPanning, activeSlot.crop, activeSlot.panX, activeSlot.panY]);
+
+  // Scroll directly to preview box and center it
+  const scrollToPreview = () => {
+    if (!previewBoxRef.current) return;
+    try {
+      previewBoxRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } catch (_) {}
+    const rect = previewBoxRef.current.getBoundingClientRect();
+    const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+    const targetY = rect.top + scrollTop - 70;
+    window.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+  };
 
   // Crop toggle with auto-scroll to preview
   const handleToggleCrop = () => {
@@ -343,10 +401,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       isCropped: nextCrop,
       crop: activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 },
     });
-    if (nextCrop && previewBoxRef.current) {
-      setTimeout(() => {
-        previewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-      }, 50);
+    if (nextCrop) {
+      setTimeout(scrollToPreview, 40);
+      setTimeout(scrollToPreview, 220);
     }
   };
 
@@ -948,57 +1005,59 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
         {/* The White A4 Paper Sheet */}
         <div className="py-6 flex flex-col items-center justify-center bg-[#050a14] rounded-2xl my-3 p-3 sm:p-4 border border-blue-950/60 overflow-hidden relative">
-          {/* White Paper Canvas */}
+          {/* White Paper Canvas - Single clean outer border line and strict invisible boundary */}
           <div
-            className={`bg-white rounded-sm shadow-2xl shadow-black border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden ${
+            className={`bg-white rounded-xs shadow-2xl shadow-black/70 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden ${
               isLandscape
                 ? 'w-full max-w-[420px] aspect-[297/210]'
                 : 'w-full max-w-[270px] sm:max-w-[310px] aspect-[210/297]'
             }`}
-            style={{ padding: '8px' }}
           >
-            {/* Printable Margin Guideline (Dashed box) */}
-            <div className="w-full h-full border border-dashed border-slate-300 rounded-xs flex items-center justify-center p-1 relative overflow-hidden bg-slate-50/20">
-              {/* Grid of Slots inside A4 Sheet */}
-              <div
-                className="w-full h-full grid gap-1.5 overflow-hidden"
-                style={{
-                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                  gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-                }}
-              >
-                {Array.from({ length: totalSlots }).map((_, slotIdx) => {
-                  const slotData = slots[slotIdx] || {
-                    fitMode: 'Fit',
-                    rotation: 0,
-                    zoom: 100,
-                  };
-                  const isSlotActive = activeSlotIndex === slotIdx;
-                  const hasImage = !!slotData.imageUrl;
-                  const slotCrop = slotData.crop || { top: 0, bottom: 0, left: 0, right: 0 };
-                  const hasCrop = (slotCrop.top > 0 || slotCrop.bottom > 0 || slotCrop.left > 0 || slotCrop.right > 0);
+            {/* Grid of Slots inside A4 Sheet - strictly constrained by A4 bounds (invisible border) */}
+            <div
+              className={`w-full h-full grid overflow-hidden ${
+                totalSlots > 1 ? 'gap-1 p-1 bg-slate-100/50' : 'p-0 bg-white'
+              }`}
+              style={{
+                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+              }}
+            >
+              {Array.from({ length: totalSlots }).map((_, slotIdx) => {
+                const slotData = slots[slotIdx] || {
+                  fitMode: 'Fit',
+                  rotation: 0,
+                  zoom: 100,
+                };
+                const isSlotActive = activeSlotIndex === slotIdx;
+                const hasImage = !!slotData.imageUrl;
+                const slotCrop = slotData.crop || { top: 0, bottom: 0, left: 0, right: 0 };
+                const hasCrop = (slotCrop.top > 0 || slotCrop.bottom > 0 || slotCrop.left > 0 || slotCrop.right > 0);
 
-                  // Fit Mode Object-fit mapping
-                  const objectFit =
-                    slotData.fitMode === 'Stretch'
-                      ? 'fill'
-                      : slotData.fitMode === 'Fill'
-                      ? 'cover'
-                      : 'contain';
+                // Fit Mode Object-fit mapping
+                const objectFit =
+                  slotData.fitMode === 'Stretch'
+                    ? 'fill'
+                    : slotData.fitMode === 'Fill'
+                    ? 'cover'
+                    : 'contain';
 
-                  return (
-                    <div
-                      key={slotIdx}
-                      ref={isSlotActive ? activeSlotContainerRef : undefined}
-                      onClick={() => setActiveSlotIndex(slotIdx)}
-                      className={`relative rounded-xs border overflow-hidden cursor-pointer flex items-center justify-center p-0.5 transition-all select-none ${
-                        isSlotActive
-                          ? 'border-blue-500 ring-2 ring-blue-400 shadow-md bg-blue-50/20'
-                          : 'border-slate-200 bg-white hover:border-slate-400'
-                      }`}
-                    >
+                return (
+                  <div
+                    key={slotIdx}
+                    ref={isSlotActive ? activeSlotContainerRef : undefined}
+                    onClick={() => setActiveSlotIndex(slotIdx)}
+                    className={`relative overflow-hidden cursor-pointer flex items-center justify-center transition-all select-none ${
+                      totalSlots > 1
+                        ? isSlotActive
+                          ? 'border border-blue-500 bg-blue-50/20 rounded-xs'
+                          : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs'
+                        : 'w-full h-full border-none bg-white'
+                    }`}
+                  >
                       {hasImage ? (
                         <div
+                          onPointerDown={isSlotActive && !slotData.isCropped ? handlePanPointerDown : undefined}
                           onMouseDown={isSlotActive && !slotData.isCropped ? startPan : undefined}
                           onTouchStart={isSlotActive && !slotData.isCropped ? startPan : undefined}
                           className={`w-full h-full relative flex items-center justify-center overflow-hidden touch-none select-none ${
@@ -1060,46 +1119,50 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                                   {/* 4 Square Handles ONLY in the middle of Top, Bottom, Left, and Right (No corner handles) */}
                                   {/* 1. TOP HANDLE (Up middle) */}
                                   <div
+                                    onPointerDown={(e) => handleHandlePointerDown(e, 'top')}
                                     onMouseDown={(e) => startCropDrag(e, 'top')}
                                     onTouchStart={(e) => startCropDrag(e, 'top')}
-                                    className="absolute -top-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
                                     style={{ touchAction: 'none' }}
                                     title="Crop Top"
                                   >
-                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
                                   </div>
 
                                   {/* 2. BOTTOM HANDLE (Down middle) */}
                                   <div
+                                    onPointerDown={(e) => handleHandlePointerDown(e, 'bottom')}
                                     onMouseDown={(e) => startCropDrag(e, 'bottom')}
                                     onTouchStart={(e) => startCropDrag(e, 'bottom')}
-                                    className="absolute -bottom-1.5 left-1/2 -translate-x-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
                                     style={{ touchAction: 'none' }}
                                     title="Crop Bottom"
                                   >
-                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
                                   </div>
 
                                   {/* 3. LEFT HANDLE (Left middle) */}
                                   <div
+                                    onPointerDown={(e) => handleHandlePointerDown(e, 'left')}
                                     onMouseDown={(e) => startCropDrag(e, 'left')}
                                     onTouchStart={(e) => startCropDrag(e, 'left')}
-                                    className="absolute -left-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
                                     style={{ touchAction: 'none' }}
                                     title="Crop Left"
                                   >
-                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
                                   </div>
 
                                   {/* 4. RIGHT HANDLE (Right middle) */}
                                   <div
+                                    onPointerDown={(e) => handleHandlePointerDown(e, 'right')}
                                     onMouseDown={(e) => startCropDrag(e, 'right')}
                                     onTouchStart={(e) => startCropDrag(e, 'right')}
-                                    className="absolute -right-1.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 sm:w-4 sm:h-4 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none"
+                                    className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
                                     style={{ touchAction: 'none' }}
                                     title="Crop Right"
                                   >
-                                    <div className="w-1 h-1 bg-blue-600 rounded-full" />
+                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
                                   </div>
                                 </div>
                               </div>
@@ -1120,7 +1183,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
               </div>
             </div>
           </div>
-        </div>
 
         {/* Number of Copies Stepper */}
         <div className="pt-3.5 border-t border-blue-900/40 flex items-center justify-between flex-wrap gap-3">
@@ -1251,6 +1313,20 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Fullscreen touch blocker while user is actively dragging crop handles or moving the image */}
+      {(draggingHandle || isPanning) && (
+        <div
+          className="fixed inset-0 z-[999999] cursor-move select-none touch-none bg-transparent"
+          style={{ touchAction: 'none' }}
+          onPointerMove={(e) => {
+            if (e.cancelable) e.preventDefault();
+          }}
+          onTouchMove={(e) => {
+            if (e.cancelable) e.preventDefault();
+          }}
+        />
+      )}
     </div>
   );
 };
