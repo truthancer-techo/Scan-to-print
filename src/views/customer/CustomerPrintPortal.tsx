@@ -255,7 +255,7 @@ export const CustomerPrintPortal: React.FC = () => {
             <div className="flex items-center gap-2 shrink-0">
               <label className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white rounded-full text-xs font-black cursor-pointer shadow-md shadow-orange-500/20 transition active:scale-95 shrink-0">
                 <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>+ Add document</span>
+                <span>Add document</span>
                 <input
                   type="file"
                   multiple

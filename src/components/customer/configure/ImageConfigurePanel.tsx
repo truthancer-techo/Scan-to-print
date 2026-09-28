@@ -227,7 +227,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   // Crop & Pan State & Container Ref
   const [draggingHandle, setDraggingHandle] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
   const [isPanning, setIsPanning] = useState(false);
+  const [isPinching, setIsPinching] = useState(false);
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
+  const pinchStartRef = useRef<{ initialDistance: number; initialZoom: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -283,10 +285,44 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     setIsPanning(true);
   };
 
-  useEffect(() => {
-    if (!draggingHandle && !isPanning) return;
+  // Two-finger pinch to zoom on mobile
+  const handleSlotTouchStart = (e: React.TouchEvent) => {
+    if (activeSlot.isCropped) return;
 
-    // Lock page scrolling completely while user is interacting with crop handles or moving the image
+    if (e.touches.length === 2) {
+      if (e.cancelable) e.preventDefault();
+      e.stopPropagation();
+      setIsPanning(false);
+      panStartRef.current = null;
+
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+      pinchStartRef.current = {
+        initialDistance: dist > 0 ? dist : 1,
+        initialZoom: activeSlot.zoom || 100,
+      };
+      setIsPinching(true);
+    } else if (e.touches.length === 1) {
+      startPan(e);
+    }
+  };
+
+  // Mouse wheel zoom on desktop
+  const handleSlotWheel = (e: React.WheelEvent) => {
+    if (activeSlot.isCropped) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const currentZoom = activeSlot.zoom || 100;
+    const delta = e.deltaY < 0 ? 5 : -5;
+    const newZoom = Math.min(300, Math.max(50, currentZoom + delta));
+    updateActiveSlot({ zoom: newZoom });
+  };
+
+  useEffect(() => {
+    if (!draggingHandle && !isPanning && !isPinching) return;
+
+    // Lock page scrolling completely while user is interacting with crop handles, moving, or zooming
     const origHtmlOverflow = document.documentElement.style.overflow;
     const origHtmlTouchAction = document.documentElement.style.touchAction;
     const origBodyOverflow = document.body.style.overflow;
@@ -303,6 +339,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       // Prevent browser default scroll behavior
       if (e.cancelable) {
         e.preventDefault();
+      }
+
+      // Handle two-finger pinch to zoom
+      if ('touches' in e && (e as TouchEvent).touches.length === 2 && pinchStartRef.current) {
+        const t1 = (e as TouchEvent).touches[0];
+        const t2 = (e as TouchEvent).touches[1];
+        const currentDist = Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
+        if (pinchStartRef.current.initialDistance > 0) {
+          const scale = currentDist / pinchStartRef.current.initialDistance;
+          const calculatedZoom = Math.min(300, Math.max(50, Math.round(pinchStartRef.current.initialZoom * scale)));
+          updateActiveSlot({ zoom: calculatedZoom });
+        }
+        return;
       }
 
       const clientX = 'touches' in e && e.touches.length > 0 ? e.touches[0].clientX : (e as MouseEvent).clientX;
@@ -349,7 +398,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       if (animFrameId) cancelAnimationFrame(animFrameId);
       setDraggingHandle(null);
       setIsPanning(false);
+      setIsPinching(false);
       panStartRef.current = null;
+      pinchStartRef.current = null;
       document.documentElement.style.overflow = origHtmlOverflow;
       document.documentElement.style.touchAction = origHtmlTouchAction;
       document.body.style.overflow = origBodyOverflow;
@@ -939,49 +990,41 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           </div>
         </div>
 
-        {/* ZOOM LEVEL SLIDER */}
+        {/* INTERACTION HINT & STATUS (Replaces boring zoom slider with mobile 2-finger zoom & drag) */}
         <div className="pt-1 space-y-2">
-          <div className="flex items-center justify-between mb-1">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-              <ZoomIn className="w-3 h-3 text-orange-400" />
-              ZOOM LEVEL
-            </span>
-            <span className="text-xs font-mono font-bold text-orange-400">
-              {activeSlot.zoom || 100}%
-            </span>
-          </div>
-
-          <input
-            type="range"
-            min={50}
-            max={200}
-            step={5}
-            value={activeSlot.zoom || 100}
-            onChange={(e) => handleZoomChange(Number(e.target.value))}
-            className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-orange-500 focus:outline-none"
-          />
-
           {activeSlot.isCropped && (
             <div className="text-[11px] text-blue-300/90 bg-blue-950/40 border border-blue-800/40 rounded-xl px-2.5 py-1.5 flex items-center gap-2">
               <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse shrink-0" />
-              <span>Crop Mode: Drag the 4 square handles (Top, Bottom, Left, Right) in preview to crop. Outside parts remain visible.</span>
+              <span>Crop Mode: Drag the 4 square handles in preview to crop. Outside parts remain visible.</span>
             </div>
           )}
 
-          {/* Status Hint when Crop is Off */}
+          {/* Gesture Hint when Crop is Off */}
           {!activeSlot.isCropped && activeSlot.imageUrl && (
             <div className="flex items-center justify-between text-[11px] text-slate-300 bg-blue-950/30 border border-blue-900/40 rounded-xl px-3 py-2 flex-wrap gap-2">
-              <div className="flex items-center gap-1.5 text-slate-300">
-                <Move className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <span>Drag directly on the preview image to move & position it</span>
+              <div className="flex items-center gap-2 text-slate-300 flex-wrap">
+                <span className="flex items-center gap-1.5 text-orange-400 font-medium">
+                  <Move className="w-3.5 h-3.5" /> Drag to Move
+                </span>
+                <span className="text-slate-600">•</span>
+                <span className="flex items-center gap-1.5 text-blue-400 font-medium">
+                  <ZoomIn className="w-3.5 h-3.5" /> 2-Finger Pinch to Zoom
+                </span>
+                {activeSlot.zoom && activeSlot.zoom !== 100 ? (
+                  <span className="text-[10px] font-mono text-amber-300 bg-amber-950/40 px-1.5 py-0.5 rounded-md border border-amber-800/40">
+                    {activeSlot.zoom}%
+                  </span>
+                ) : null}
               </div>
-              {(activeSlot.panX || activeSlot.panY) ? (
+              {(activeSlot.panX || activeSlot.panY || (activeSlot.zoom && activeSlot.zoom !== 100)) ? (
                 <button
                   type="button"
-                  onClick={handleResetPan}
+                  onClick={() => {
+                    updateActiveSlot({ panX: 0, panY: 0, zoom: 100 });
+                  }}
                   className="text-[10px] text-orange-400 hover:text-orange-300 font-bold underline shrink-0 active:scale-95"
                 >
-                  Reset Position
+                  Reset Position & Zoom
                 </button>
               ) : null}
             </div>
@@ -1005,22 +1048,26 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
         {/* The White A4 Paper Sheet */}
         <div className="py-6 flex flex-col items-center justify-center bg-[#050a14] rounded-2xl my-3 p-3 sm:p-4 border border-blue-950/60 overflow-hidden relative">
-          {/* White Paper Canvas - Single clean outer border line and strict invisible boundary */}
+          {/* White Paper Canvas - Real A4 Paper Sheet with visible crisp border & margins */}
           <div
-            className={`bg-white rounded-xs shadow-2xl shadow-black/70 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden ${
+            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border-2 border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center overflow-hidden p-3 sm:p-4 ${
               isLandscape
-                ? 'w-full max-w-[420px] aspect-[297/210]'
-                : 'w-full max-w-[270px] sm:max-w-[310px] aspect-[210/297]'
+                ? 'w-full max-w-[440px]'
+                : 'w-full max-w-[280px] sm:max-w-[320px]'
             }`}
+            style={{
+              aspectRatio: isLandscape ? '297 / 210' : '210 / 297',
+            }}
           >
-            {/* Grid of Slots inside A4 Sheet - strictly constrained by A4 bounds (invisible border) */}
+            {/* Printable Content Area with Invisible Border (overflow-hidden) strictly preventing image from going outside */}
             <div
-              className={`w-full h-full grid overflow-hidden ${
-                totalSlots > 1 ? 'gap-1 p-1 bg-slate-100/50' : 'p-0 bg-white'
+              className={`w-full h-full relative overflow-hidden grid border-none ${
+                totalSlots > 1 ? 'gap-1' : ''
               }`}
               style={{
                 gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
                 gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+                touchAction: 'none',
               }}
             >
               {Array.from({ length: totalSlots }).map((_, slotIdx) => {
@@ -1052,14 +1099,15 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                         ? isSlotActive
                           ? 'border border-blue-500 bg-blue-50/20 rounded-xs'
                           : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs'
-                        : 'w-full h-full border-none bg-white'
+                        : 'w-full h-full border-none bg-transparent'
                     }`}
                   >
                       {hasImage ? (
                         <div
                           onPointerDown={isSlotActive && !slotData.isCropped ? handlePanPointerDown : undefined}
                           onMouseDown={isSlotActive && !slotData.isCropped ? startPan : undefined}
-                          onTouchStart={isSlotActive && !slotData.isCropped ? startPan : undefined}
+                          onTouchStart={isSlotActive && !slotData.isCropped ? handleSlotTouchStart : undefined}
+                          onWheel={isSlotActive && !slotData.isCropped ? handleSlotWheel : undefined}
                           className={`w-full h-full relative flex items-center justify-center overflow-hidden touch-none select-none ${
                             isSlotActive && !slotData.isCropped ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
                           }`}
@@ -1314,8 +1362,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         </div>
       </div>
 
-      {/* Fullscreen touch blocker while user is actively dragging crop handles or moving the image */}
-      {(draggingHandle || isPanning) && (
+      {/* Fullscreen touch blocker while user is actively dragging crop handles, moving, or pinching */}
+      {(draggingHandle || isPanning || isPinching) && (
         <div
           className="fixed inset-0 z-[999999] cursor-move select-none touch-none bg-transparent"
           style={{ touchAction: 'none' }}
