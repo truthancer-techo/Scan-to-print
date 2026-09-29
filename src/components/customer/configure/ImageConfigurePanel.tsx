@@ -264,14 +264,24 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   };
 
   // Crop & Pan State & Container Ref
-  const [draggingHandle, setDraggingHandle] = useState<'top' | 'bottom' | 'left' | 'right' | null>(null);
+  type CropHandle =
+    | 'top'
+    | 'bottom'
+    | 'left'
+    | 'right'
+    | 'top-left'
+    | 'top-right'
+    | 'bottom-left'
+    | 'bottom-right';
+
+  const [draggingHandle, setDraggingHandle] = useState<CropHandle | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
   const paperGestureRef = useRef<HTMLDivElement | null>(null);
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
 
-  const startCropDrag = (e: React.MouseEvent | React.TouchEvent, handle: 'top' | 'bottom' | 'left' | 'right') => {
+  const startCropDrag = (e: React.MouseEvent | React.TouchEvent, handle: CropHandle) => {
     if ('cancelable' in e && e.cancelable) {
       e.preventDefault();
     }
@@ -279,7 +289,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     setDraggingHandle(handle);
   };
 
-  const handleHandlePointerDown = (e: React.PointerEvent, handle: 'top' | 'bottom' | 'left' | 'right') => {
+  const handleHandlePointerDown = (e: React.PointerEvent, handle: CropHandle) => {
     e.preventDefault();
     e.stopPropagation();
     try {
@@ -515,16 +525,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
           const newCrop = { ...currentCrop };
 
-          if (draggingHandle === 'top') {
+          if (draggingHandle.includes('top')) {
             const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), ((clientY - rect.top) / rect.height) * 100));
             newCrop.top = Math.round(topPct);
-          } else if (draggingHandle === 'bottom') {
+          }
+          if (draggingHandle.includes('bottom')) {
             const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((rect.bottom - clientY) / rect.height) * 100));
             newCrop.bottom = Math.round(bottomPct);
-          } else if (draggingHandle === 'left') {
+          }
+          if (draggingHandle.includes('left')) {
             const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), ((clientX - rect.left) / rect.width) * 100));
             newCrop.left = Math.round(leftPct);
-          } else if (draggingHandle === 'right') {
+          }
+          if (draggingHandle.includes('right')) {
             const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((rect.right - clientX) / rect.width) * 100));
             newCrop.right = Math.round(rightPct);
           }
@@ -1224,15 +1237,15 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                               }}
                             />
 
-                            {/* Crop Box Overlay with exactly 4 edge-center handles (Only when Crop mode is active) */}
+                            {/* Crop Box Overlay with professional 8 square handles (half outside, half inside - Image 2 & 3) */}
                             {slotData.isCropped && isSlotActive && (
                               <div
-                                className="absolute inset-0 pointer-events-none z-10 overflow-hidden touch-none"
+                                className="absolute inset-0 pointer-events-none z-10 touch-none"
                                 style={{ touchAction: 'none' }}
                               >
                                 {/* The Bounding Crop Frame */}
                                 <div
-                                  className="absolute border-2 border-blue-500"
+                                  className="absolute border border-blue-500"
                                   style={{
                                     top: `${slotCrop.top}%`,
                                     bottom: `${slotCrop.bottom}%`,
@@ -1241,60 +1254,38 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                                     boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.48)',
                                   }}
                                 >
-                                  {/* Diagonal Cross Guidelines (matching reference image) */}
-                                  <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-blue-500" strokeWidth="1" opacity="0.8">
-                                    <line x1="0" y1="0" x2="100%" y2="100%" strokeDasharray="3 2" />
-                                    <line x1="100%" y1="0" x2="0" y2="100%" strokeDasharray="3 2" />
+                                  {/* Diagonal Cross Guidelines (matching InDesign graphic frame in Image 2) */}
+                                  <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-blue-500" strokeWidth="1">
+                                    <line x1="0" y1="0" x2="100%" y2="100%" />
+                                    <line x1="100%" y1="0" x2="0" y2="100%" />
                                   </svg>
 
-                                  {/* 4 Square Handles ONLY in the middle of Top, Bottom, Left, and Right (No corner handles) */}
-                                  {/* 1. TOP HANDLE (Up middle) */}
-                                  <div
-                                    onPointerDown={(e) => handleHandlePointerDown(e, 'top')}
-                                    onMouseDown={(e) => startCropDrag(e, 'top')}
-                                    onTouchStart={(e) => startCropDrag(e, 'top')}
-                                    className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
-                                    style={{ touchAction: 'none' }}
-                                    title="Crop Top"
-                                  >
-                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
-                                  </div>
-
-                                  {/* 2. BOTTOM HANDLE (Down middle) */}
-                                  <div
-                                    onPointerDown={(e) => handleHandlePointerDown(e, 'bottom')}
-                                    onMouseDown={(e) => startCropDrag(e, 'bottom')}
-                                    onTouchStart={(e) => startCropDrag(e, 'bottom')}
-                                    className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ns-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
-                                    style={{ touchAction: 'none' }}
-                                    title="Crop Bottom"
-                                  >
-                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
-                                  </div>
-
-                                  {/* 3. LEFT HANDLE (Left middle) */}
-                                  <div
-                                    onPointerDown={(e) => handleHandlePointerDown(e, 'left')}
-                                    onMouseDown={(e) => startCropDrag(e, 'left')}
-                                    onTouchStart={(e) => startCropDrag(e, 'left')}
-                                    className="absolute -left-2 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
-                                    style={{ touchAction: 'none' }}
-                                    title="Crop Left"
-                                  >
-                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
-                                  </div>
-
-                                  {/* 4. RIGHT HANDLE (Right middle) */}
-                                  <div
-                                    onPointerDown={(e) => handleHandlePointerDown(e, 'right')}
-                                    onMouseDown={(e) => startCropDrag(e, 'right')}
-                                    onTouchStart={(e) => startCropDrag(e, 'right')}
-                                    className="absolute -right-2 top-1/2 -translate-y-1/2 w-4 h-4 sm:w-5 sm:h-5 bg-white border-2 border-blue-600 rounded-2xs shadow-md cursor-ew-resize pointer-events-auto hover:scale-125 active:scale-125 transition-transform flex items-center justify-center z-30 touch-none select-none"
-                                    style={{ touchAction: 'none' }}
-                                    title="Crop Right"
-                                  >
-                                    <div className="w-1.5 h-1.5 bg-blue-600 rounded-full pointer-events-none" />
-                                  </div>
+                                  {/* 8 Square Handles: 4 corners + 4 edge centers (half outside, half inside - Image 2 & 3) */}
+                                  {([
+                                    { id: 'top-left' as const, top: '0%', left: '0%', cursor: 'cursor-nwse-resize', title: 'Crop Top-Left' },
+                                    { id: 'top' as const, top: '0%', left: '50%', cursor: 'cursor-ns-resize', title: 'Crop Top' },
+                                    { id: 'top-right' as const, top: '0%', left: '100%', cursor: 'cursor-nesw-resize', title: 'Crop Top-Right' },
+                                    { id: 'right' as const, top: '50%', left: '100%', cursor: 'cursor-ew-resize', title: 'Crop Right' },
+                                    { id: 'bottom-right' as const, top: '100%', left: '100%', cursor: 'cursor-nwse-resize', title: 'Crop Bottom-Right' },
+                                    { id: 'bottom' as const, top: '100%', left: '50%', cursor: 'cursor-ns-resize', title: 'Crop Bottom' },
+                                    { id: 'bottom-left' as const, top: '100%', left: '0%', cursor: 'cursor-nesw-resize', title: 'Crop Bottom-Left' },
+                                    { id: 'left' as const, top: '50%', left: '0%', cursor: 'cursor-ew-resize', title: 'Crop Left' },
+                                  ]).map((handle) => (
+                                    <div
+                                      key={handle.id}
+                                      onPointerDown={(e) => handleHandlePointerDown(e, handle.id)}
+                                      onMouseDown={(e) => startCropDrag(e, handle.id)}
+                                      onTouchStart={(e) => startCropDrag(e, handle.id)}
+                                      className={`absolute w-3.5 h-3.5 bg-white border-[1.5px] border-blue-500 rounded-[1px] shadow-xs ${handle.cursor} pointer-events-auto hover:scale-125 active:scale-125 transition-transform z-30 touch-none select-none after:absolute after:-inset-1.5 after:content-['']`}
+                                      style={{
+                                        top: handle.top,
+                                        left: handle.left,
+                                        transform: 'translate(-50%, -50%)',
+                                        touchAction: 'none',
+                                      }}
+                                      title={handle.title}
+                                    />
+                                  ))}
                                 </div>
                               </div>
                             )}
