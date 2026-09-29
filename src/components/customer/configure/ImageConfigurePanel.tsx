@@ -192,18 +192,15 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   activeSlotRef.current = activeSlot;
 
   // Exact physical clamping so image NEVER goes outside A4 paper borders
+  // Safe pan bounds so image can move naturally but stays within A4 limits
   const getPanBounds = (zoom: number = 100) => {
     const el = paperGestureRef.current;
     const w = el?.clientWidth || 300;
     const h = el?.clientHeight || 424;
 
-    if (zoom <= 100) {
-      return { maxPanX: 0, maxPanY: 0 };
-    }
-
-    const zFactor = zoom / 100;
-    const maxPanX = Math.round((w * zFactor - w) / 2);
-    const maxPanY = Math.round((h * zFactor - h) / 2);
+    const zFactor = Math.max(0.6, zoom / 100);
+    const maxPanX = Math.round(w * 0.45 * zFactor);
+    const maxPanY = Math.round(h * 0.45 * zFactor);
 
     return { maxPanX, maxPanY };
   };
@@ -300,7 +297,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
   // Desktop mouse drag to pan
   const startPan = (e: React.MouseEvent) => {
-    if (activeSlot.isCropped) return;
+    if ((e.target as HTMLElement)?.closest('[data-crop-handle]')) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -315,12 +312,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
   // Mouse wheel zoom on desktop
   const handleSlotWheel = (e: React.WheelEvent) => {
-    if (activeSlot.isCropped) return;
     e.preventDefault();
     e.stopPropagation();
     const currentZoom = activeSlot.zoom || 100;
     const delta = e.deltaY < 0 ? 5 : -5;
-    const newZoom = Math.min(400, Math.max(40, currentZoom + delta));
+    const newZoom = Math.min(400, Math.max(30, currentZoom + delta));
     updateActiveSlot({ zoom: newZoom });
   };
 
@@ -355,7 +351,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     });
 
     const onTouchStart = (e: TouchEvent) => {
-      if (activeSlotRef.current.isCropped) return;
+      // If touching a crop handle, let the crop handle pointer events handle it
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-crop-handle]')) return;
 
       if (e.touches.length === 2) {
         if (e.cancelable) e.preventDefault();
@@ -385,8 +383,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      if (activeSlotRef.current.isCropped) return;
-
       if (e.touches.length >= 2 && isPinching) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -396,7 +392,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
         if (startDist > 0) {
           const factor = curDist / startDist;
-          const targetZoom = Math.min(400, Math.max(40, Math.round(startZoom * factor)));
+          const targetZoom = Math.min(400, Math.max(30, Math.round(startZoom * factor)));
 
           const bounds = getPanBounds(targetZoom);
           const dMidX = curMid.x - startMidX;
@@ -421,12 +417,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
         const currentZoom = activeSlotRef.current.zoom || 100;
         const bounds = getPanBounds(currentZoom);
-
-        if (bounds.maxPanX === 0 && bounds.maxPanY === 0) {
-          // At 100% zoom or less, keep image perfectly centered inside A4 paper
-          updateActiveSlot({ panX: 0, panY: 0 });
-          return;
-        }
 
         const dx = e.touches[0].clientX - dragStartX;
         const dy = e.touches[0].clientY - dragStartY;
@@ -504,11 +494,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
           const currentZoom = activeSlot.zoom || 100;
           const bounds = getPanBounds(currentZoom);
-
-          if (bounds.maxPanX === 0 && bounds.maxPanY === 0) {
-            updateActiveSlot({ panX: 0, panY: 0 });
-            return;
-          }
 
           const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(panStartRef.current.initialPanX + dx)));
           const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(panStartRef.current.initialPanY + dy)));
@@ -1171,12 +1156,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     : 'contain';
 
                 const bounds = getPanBounds(slotData.zoom || 100);
-                const effectivePanX = (slotData.zoom && slotData.zoom > 100)
-                  ? Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, slotData.panX || 0))
-                  : 0;
-                const effectivePanY = (slotData.zoom && slotData.zoom > 100)
-                  ? Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, slotData.panY || 0))
-                  : 0;
+                const effectivePanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, slotData.panX || 0));
+                const effectivePanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, slotData.panY || 0));
 
                 return (
                   <div
@@ -1245,7 +1226,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                               >
                                 {/* The Bounding Crop Frame */}
                                 <div
-                                  className="absolute border border-blue-500"
+                                  className="absolute border border-blue-500 pointer-events-none"
                                   style={{
                                     top: `${slotCrop.top}%`,
                                     bottom: `${slotCrop.bottom}%`,
@@ -1273,6 +1254,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                                   ]).map((handle) => (
                                     <div
                                       key={handle.id}
+                                      data-crop-handle="true"
                                       onPointerDown={(e) => handleHandlePointerDown(e, handle.id)}
                                       onMouseDown={(e) => startCropDrag(e, handle.id)}
                                       onTouchStart={(e) => startCropDrag(e, handle.id)}
