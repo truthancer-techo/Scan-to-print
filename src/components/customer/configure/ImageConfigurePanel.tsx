@@ -148,31 +148,96 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   // Auto-populate or sync slots when layout or images change
   useEffect(() => {
     setSlots((prev) => {
-      const next: { [key: number]: SlotSetting } = { ...prev };
+      const next: { [key: number]: SlotSetting } = {};
       for (let i = 0; i < totalSlots; i++) {
         const assignedImg = currentImages[i % currentImages.length];
-        if (!next[i]) {
-          next[i] = {
-            imageId: assignedImg?.id,
-            imageUrl: assignedImg?.previewUrl || assignedImg?.url,
-            imageName: assignedImg?.name,
-            fitMode: 'Fit',
-            rotation: 0,
-            zoom: 100,
-          };
-        } else if (!next[i].imageUrl && assignedImg) {
-          // Fill empty slot with image if available
-          next[i] = {
-            ...next[i],
-            imageId: assignedImg.id,
-            imageUrl: assignedImg.previewUrl || assignedImg.url,
-            imageName: assignedImg.name,
-          };
-        }
+        const existing = prev[i];
+        next[i] = {
+          imageId: assignedImg?.id || existing?.imageId,
+          imageUrl: assignedImg?.previewUrl || assignedImg?.url || existing?.imageUrl,
+          imageName: assignedImg?.name || existing?.imageName,
+          fitMode: existing?.fitMode || 'Fit',
+          rotation: existing?.rotation || 0,
+          zoom: existing?.zoom || 100,
+          crop: existing?.crop || { top: 0, bottom: 0, left: 0, right: 0 },
+          panX: existing?.panX || 0,
+          panY: existing?.panY || 0,
+          isCropped: existing?.isCropped || false,
+        };
       }
       return next;
     });
   }, [totalSlots, currentImages.length]);
+
+  // Handle switching preset and auto-fitting images cleanly
+  const handleSelectPreset = (preset: LayoutPreset) => {
+    setLayoutPreset(preset);
+    let r = 1;
+    let c = 1;
+    if (preset === '2_top_bottom') {
+      r = 2;
+      c = 1;
+    } else if (preset === '2_left_right') {
+      r = 1;
+      c = 2;
+    } else if (preset === '4_grid') {
+      r = 2;
+      c = 2;
+    } else if (preset === 'custom') {
+      r = appliedGrid.rows;
+      c = appliedGrid.cols;
+    }
+
+    const total = r * c;
+    const nextSlots: { [key: number]: SlotSetting } = {};
+    for (let i = 0; i < total; i++) {
+      const assignedImg = currentImages[i % currentImages.length];
+      nextSlots[i] = {
+        imageId: assignedImg?.id,
+        imageUrl: assignedImg?.previewUrl || assignedImg?.url,
+        imageName: assignedImg?.name,
+        fitMode: 'Fit',
+        rotation: 0,
+        zoom: 100,
+        crop: { top: 0, bottom: 0, left: 0, right: 0 },
+        panX: 0,
+        panY: 0,
+        isCropped: false,
+      };
+    }
+    setSlots(nextSlots);
+    setActiveSlotIndex(0);
+  };
+
+  // Handle Apply Grid: takes rows & columns and automatically fits all uploaded images onto the single A4 sheet
+  const handleApplyGrid = () => {
+    const r = Math.max(1, Math.min(6, Number(customRows) || 1));
+    const c = Math.max(1, Math.min(6, Number(customCols) || 1));
+    setCustomRows(r);
+    setCustomCols(c);
+    setAppliedGrid({ rows: r, cols: c });
+    setLayoutPreset('custom');
+
+    const total = r * c;
+    const nextSlots: { [key: number]: SlotSetting } = {};
+    for (let i = 0; i < total; i++) {
+      const assignedImg = currentImages[i % currentImages.length];
+      nextSlots[i] = {
+        imageId: assignedImg?.id,
+        imageUrl: assignedImg?.previewUrl || assignedImg?.url,
+        imageName: assignedImg?.name,
+        fitMode: 'Fit',
+        rotation: 0,
+        zoom: 100,
+        crop: { top: 0, bottom: 0, left: 0, right: 0 },
+        panX: 0,
+        panY: 0,
+        isCropped: false,
+      };
+    }
+    setSlots(nextSlots);
+    setActiveSlotIndex(0);
+  };
 
   // Ensure activeSlotIndex is within valid range
   useEffect(() => {
@@ -831,7 +896,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           {/* 1 Image (Full) */}
           <button
             type="button"
-            onClick={() => setLayoutPreset('1_full')}
+            onClick={() => handleSelectPreset('1_full')}
             className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition active:scale-[0.98] ${
               layoutPreset === '1_full'
                 ? 'bg-orange-500/15 border-orange-500 text-white ring-1 ring-orange-500/40 shadow-sm'
@@ -851,7 +916,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           {/* 2 Images (Top/Bottom) */}
           <button
             type="button"
-            onClick={() => setLayoutPreset('2_top_bottom')}
+            onClick={() => handleSelectPreset('2_top_bottom')}
             className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition active:scale-[0.98] ${
               layoutPreset === '2_top_bottom'
                 ? 'bg-orange-500/15 border-orange-500 text-white ring-1 ring-orange-500/40 shadow-sm'
@@ -872,7 +937,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           {/* 2 Images (Left/Right) */}
           <button
             type="button"
-            onClick={() => setLayoutPreset('2_left_right')}
+            onClick={() => handleSelectPreset('2_left_right')}
             className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition active:scale-[0.98] ${
               layoutPreset === '2_left_right'
                 ? 'bg-orange-500/15 border-orange-500 text-white ring-1 ring-orange-500/40 shadow-sm'
@@ -893,7 +958,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           {/* 4 Images (2×2 Grid) */}
           <button
             type="button"
-            onClick={() => setLayoutPreset('4_grid')}
+            onClick={() => handleSelectPreset('4_grid')}
             className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition active:scale-[0.98] ${
               layoutPreset === '4_grid'
                 ? 'bg-orange-500/15 border-orange-500 text-white ring-1 ring-orange-500/40 shadow-sm'
@@ -916,7 +981,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           {/* Custom Grid */}
           <button
             type="button"
-            onClick={() => setLayoutPreset('custom')}
+            onClick={() => handleSelectPreset('custom')}
             className={`p-3 rounded-2xl border text-left flex items-center gap-2.5 transition active:scale-[0.98] ${
               layoutPreset === 'custom'
                 ? 'bg-orange-500/15 border-orange-500 text-white ring-1 ring-orange-500/40 shadow-sm'
@@ -1000,13 +1065,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             {/* Apply Grid Button */}
             <button
               type="button"
-              onClick={() => {
-                const r = Math.max(1, Math.min(6, Number(customRows) || 1));
-                const c = Math.max(1, Math.min(6, Number(customCols) || 1));
-                setCustomRows(r);
-                setCustomCols(c);
-                setAppliedGrid({ rows: r, cols: c });
-              }}
+              onClick={handleApplyGrid}
               className="px-4 py-2 bg-[#112347] hover:bg-orange-500 text-white font-extrabold text-xs rounded-xl border border-blue-800/50 transition active:scale-95 shadow-sm"
             >
               Apply Grid
