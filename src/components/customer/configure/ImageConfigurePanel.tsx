@@ -145,17 +145,62 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   // Slot configurations map (indexed 0..totalSlots-1)
   const [slots, setSlots] = useState<{ [key: number]: SlotSetting }>({});
 
+  // Automatically adapt and populate grid layout when multiple images (5-12 images) are uploaded
+  useEffect(() => {
+    if (currentImages.length >= 5) {
+      let r = 3;
+      let c = 2;
+      if (currentImages.length >= 10) {
+        r = 4;
+        c = 3;
+      } else if (currentImages.length === 9) {
+        r = 3;
+        c = 3;
+      } else if (currentImages.length >= 7) {
+        r = 4;
+        c = 2;
+      } else if (currentImages.length >= 5) {
+        r = 3;
+        c = 2;
+      }
+      setCustomRows(r);
+      setCustomCols(c);
+      setAppliedGrid({ rows: r, cols: c });
+      setLayoutPreset('custom');
+
+      const total = r * c;
+      const nextSlots: { [key: number]: SlotSetting } = {};
+      for (let i = 0; i < total; i++) {
+        const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
+        nextSlots[i] = {
+          imageId: assignedImg?.id,
+          imageUrl: assignedImg?.previewUrl || assignedImg?.url,
+          imageName: assignedImg?.name,
+          fitMode: 'Fit',
+          rotation: 0,
+          zoom: 100,
+          crop: { top: 0, bottom: 0, left: 0, right: 0 },
+          panX: 0,
+          panY: 0,
+          isCropped: false,
+        };
+      }
+      setSlots(nextSlots);
+      setActiveSlotIndex(0);
+    }
+  }, [currentImages.length]);
+
   // Auto-populate or sync slots when layout or images change
   useEffect(() => {
     setSlots((prev) => {
       const next: { [key: number]: SlotSetting } = {};
       for (let i = 0; i < totalSlots; i++) {
-        const assignedImg = currentImages[i % currentImages.length];
+        const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
         const existing = prev[i];
         next[i] = {
-          imageId: assignedImg?.id || existing?.imageId,
-          imageUrl: assignedImg?.previewUrl || assignedImg?.url || existing?.imageUrl,
-          imageName: assignedImg?.name || existing?.imageName,
+          imageId: assignedImg?.id || (currentImages.length === 1 ? existing?.imageId : undefined),
+          imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : (currentImages.length === 1 ? existing?.imageUrl : undefined),
+          imageName: assignedImg?.name || (currentImages.length === 1 ? existing?.imageName : undefined),
           fitMode: existing?.fitMode || 'Fit',
           rotation: existing?.rotation || 0,
           zoom: existing?.zoom || 100,
@@ -191,7 +236,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const total = r * c;
     const nextSlots: { [key: number]: SlotSetting } = {};
     for (let i = 0; i < total; i++) {
-      const assignedImg = currentImages[i % currentImages.length];
+      const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
       nextSlots[i] = {
         imageId: assignedImg?.id,
         imageUrl: assignedImg?.previewUrl || assignedImg?.url,
@@ -221,7 +266,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const total = r * c;
     const nextSlots: { [key: number]: SlotSetting } = {};
     for (let i = 0; i < total; i++) {
-      const assignedImg = currentImages[i % currentImages.length];
+      const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
       nextSlots[i] = {
         imageId: assignedImg?.id,
         imageUrl: assignedImg?.previewUrl || assignedImg?.url,
@@ -341,6 +386,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
+  const activeImageCropBoxRef = useRef<HTMLDivElement | null>(null);
+  const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
   const paperGestureRef = useRef<HTMLDivElement | null>(null);
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -602,30 +649,33 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
       animFrameId = requestAnimationFrame(() => {
         // If crop handle is being dragged: ONLY crop! Never pan!
-        if (draggingHandle && activeSlotContainerRef.current) {
-          const rect = activeSlotContainerRef.current.getBoundingClientRect();
-          const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
-          const newCrop = { ...currentCrop };
+        if (draggingHandle) {
+          const targetBox = activeImageCropBoxRef.current || activeSlotContainerRef.current;
+          if (targetBox) {
+            const rect = targetBox.getBoundingClientRect();
+            const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
+            const newCrop = { ...currentCrop };
 
-          if (draggingHandle.includes('top')) {
-            const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), ((clientY - rect.top) / rect.height) * 100));
-            newCrop.top = Math.round(topPct);
-          }
-          if (draggingHandle.includes('bottom')) {
-            const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((rect.bottom - clientY) / rect.height) * 100));
-            newCrop.bottom = Math.round(bottomPct);
-          }
-          if (draggingHandle.includes('left')) {
-            const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), ((clientX - rect.left) / rect.width) * 100));
-            newCrop.left = Math.round(leftPct);
-          }
-          if (draggingHandle.includes('right')) {
-            const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((rect.right - clientX) / rect.width) * 100));
-            newCrop.right = Math.round(rightPct);
-          }
+            if (draggingHandle.includes('top')) {
+              const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), ((clientY - rect.top) / rect.height) * 100));
+              newCrop.top = Math.round(topPct);
+            }
+            if (draggingHandle.includes('bottom')) {
+              const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((rect.bottom - clientY) / rect.height) * 100));
+              newCrop.bottom = Math.round(bottomPct);
+            }
+            if (draggingHandle.includes('left')) {
+              const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), ((clientX - rect.left) / rect.width) * 100));
+              newCrop.left = Math.round(leftPct);
+            }
+            if (draggingHandle.includes('right')) {
+              const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((rect.right - clientX) / rect.width) * 100));
+              newCrop.right = Math.round(rightPct);
+            }
 
-          updateActiveSlot({ crop: newCrop });
-          return;
+            updateActiveSlot({ crop: newCrop });
+            return;
+          }
         }
 
         if (isPanning && panStartRef.current && !activeSlot.isCropped) {
@@ -1299,6 +1349,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     ? 'cover'
                     : 'contain';
 
+                const imgRatio = slotData.imageUrl ? imageAspectRatios[slotData.imageUrl] : undefined;
+                const rot = slotData.rotation || 0;
+                const isRotated = rot === 90 || rot === 270;
+                const effectiveRatio = imgRatio ? (isRotated ? 1 / imgRatio : imgRatio) : undefined;
+
                 const bounds = getPanBounds(slotData.zoom || 100);
                 const effectivePanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, slotData.panX || 0));
                 const effectivePanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, slotData.panY || 0));
@@ -1308,12 +1363,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     key={slotIdx}
                     ref={isSlotActive ? activeSlotContainerRef : undefined}
                     onClick={() => setActiveSlotIndex(slotIdx)}
-                    className={`relative overflow-hidden cursor-pointer flex items-center justify-center transition-all select-none ${
+                    className={`w-full h-full min-w-0 min-h-0 relative overflow-hidden cursor-pointer flex items-center justify-center transition-all select-none ${
                       totalSlots > 1
                         ? isSlotActive
                           ? 'border border-blue-500 bg-blue-50/20 rounded-xs'
                           : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs'
-                        : 'w-full h-full border-none bg-transparent'
+                        : 'border-none bg-transparent'
                     }`}
                     style={{
                       overflow: 'hidden',
@@ -1344,77 +1399,112 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                               willChange: isPanning ? 'transform' : 'auto',
                             }}
                           >
-                            <img
-                              src={slotData.imageUrl}
-                              alt={`Slot ${slotIdx + 1}`}
-                              className="pointer-events-none select-none max-w-none transition-none"
+                            {/* Snug Image Wrapper: hugs the exact rendered rectangle of the image */}
+                            <div
+                              ref={isSlotActive ? activeImageCropBoxRef : undefined}
+                              className="relative flex items-center justify-center max-w-full max-h-full"
                               style={{
-                                width: '100%',
-                                height: '100%',
-                                objectFit,
-                                clipPath: (!slotData.isCropped && hasCrop)
-                                  ? `inset(${slotCrop.top}% ${slotCrop.right}% ${slotCrop.bottom}% ${slotCrop.left}%)`
-                                  : 'none',
+                                ...(slotData.isCropped && isSlotActive
+                                  ? {
+                                      aspectRatio: effectiveRatio ? `${effectiveRatio}` : undefined,
+                                      width: effectiveRatio && effectiveRatio >= 1 ? '100%' : 'auto',
+                                      height: effectiveRatio && effectiveRatio < 1 ? '100%' : 'auto',
+                                      maxWidth: '100%',
+                                      maxHeight: '100%',
+                                    }
+                                  : {
+                                      width: '100%',
+                                      height: '100%',
+                                    }),
                                 transform: `rotate(${slotData.rotation || 0}deg) scale(${
                                   (slotData.zoom || 100) / 100
                                 })`,
-                                filter: isGrayscale ? 'grayscale(100%)' : 'none',
                               }}
-                            />
+                            >
+                              <img
+                                ref={(el) => {
+                                  if (el && el.naturalWidth && el.naturalHeight && slotData.imageUrl) {
+                                    const ratio = el.naturalWidth / el.naturalHeight;
+                                    if (imageAspectRatios[slotData.imageUrl] !== ratio) {
+                                      setImageAspectRatios((prev) => ({ ...prev, [slotData.imageUrl!]: ratio }));
+                                    }
+                                  }
+                                }}
+                                onLoad={(e) => {
+                                  const el = e.currentTarget;
+                                  if (el.naturalWidth && el.naturalHeight && slotData.imageUrl) {
+                                    const ratio = el.naturalWidth / el.naturalHeight;
+                                    setImageAspectRatios((prev) => (prev[slotData.imageUrl!] === ratio ? prev : { ...prev, [slotData.imageUrl!]: ratio }));
+                                  }
+                                }}
+                                src={slotData.imageUrl}
+                                alt={`Slot ${slotIdx + 1}`}
+                                className="pointer-events-none select-none max-w-full max-h-full transition-none"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit,
+                                  clipPath: (!slotData.isCropped && hasCrop)
+                                    ? `inset(${slotCrop.top}% ${slotCrop.right}% ${slotCrop.bottom}% ${slotCrop.left}%)`
+                                    : 'none',
+                                  filter: isGrayscale ? 'grayscale(100%)' : 'none',
+                                }}
+                              />
 
-                            {/* Crop Box Overlay with professional 8 square handles (half outside, half inside - Image 2 & 3) */}
-                            {slotData.isCropped && isSlotActive && (
-                              <div
-                                className="absolute inset-0 pointer-events-none z-10 touch-none"
-                                style={{ touchAction: 'none' }}
-                              >
-                                {/* The Bounding Crop Frame */}
+                              {/* Crop Box Overlay with professional 8 square handles (sitting DIRECTLY around the image) */}
+                              {slotData.isCropped && isSlotActive && (
                                 <div
-                                  className="absolute border border-blue-500 pointer-events-none"
-                                  style={{
-                                    top: `${slotCrop.top}%`,
-                                    bottom: `${slotCrop.bottom}%`,
-                                    left: `${slotCrop.left}%`,
-                                    right: `${slotCrop.right}%`,
-                                    boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.48)',
-                                  }}
+                                  className="absolute inset-0 pointer-events-none z-10 touch-none"
+                                  style={{ touchAction: 'none' }}
                                 >
-                                  {/* Diagonal Cross Guidelines (matching InDesign graphic frame in Image 2) */}
-                                  <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-blue-500" strokeWidth="1">
-                                    <line x1="0" y1="0" x2="100%" y2="100%" />
-                                    <line x1="100%" y1="0" x2="0" y2="100%" />
-                                  </svg>
+                                  {/* The Bounding Crop Frame */}
+                                  <div
+                                    className="absolute border border-blue-500 pointer-events-none"
+                                    style={{
+                                      top: `${slotCrop.top}%`,
+                                      bottom: `${slotCrop.bottom}%`,
+                                      left: `${slotCrop.left}%`,
+                                      right: `${slotCrop.right}%`,
+                                      boxShadow: '0 0 0 9999px rgba(0, 0, 0, 0.48)',
+                                    }}
+                                  >
+                                    {/* Diagonal Cross Guidelines (matching InDesign graphic frame in Image 2) */}
+                                    <svg className="absolute inset-0 w-full h-full pointer-events-none stroke-blue-500" strokeWidth="1">
+                                      <line x1="0" y1="0" x2="100%" y2="100%" />
+                                      <line x1="100%" y1="0" x2="0" y2="100%" />
+                                    </svg>
 
-                                  {/* 8 Square Handles: 4 corners + 4 edge centers (half outside, half inside - Image 2 & 3) */}
-                                  {([
-                                    { id: 'top-left' as const, top: '0%', left: '0%', cursor: 'cursor-nwse-resize', title: 'Crop Top-Left' },
-                                    { id: 'top' as const, top: '0%', left: '50%', cursor: 'cursor-ns-resize', title: 'Crop Top' },
-                                    { id: 'top-right' as const, top: '0%', left: '100%', cursor: 'cursor-nesw-resize', title: 'Crop Top-Right' },
-                                    { id: 'right' as const, top: '50%', left: '100%', cursor: 'cursor-ew-resize', title: 'Crop Right' },
-                                    { id: 'bottom-right' as const, top: '100%', left: '100%', cursor: 'cursor-nwse-resize', title: 'Crop Bottom-Right' },
-                                    { id: 'bottom' as const, top: '100%', left: '50%', cursor: 'cursor-ns-resize', title: 'Crop Bottom' },
-                                    { id: 'bottom-left' as const, top: '100%', left: '0%', cursor: 'cursor-nesw-resize', title: 'Crop Bottom-Left' },
-                                    { id: 'left' as const, top: '50%', left: '0%', cursor: 'cursor-ew-resize', title: 'Crop Left' },
-                                  ]).map((handle) => (
-                                    <div
-                                      key={handle.id}
-                                      data-crop-handle="true"
-                                      onPointerDown={(e) => handleHandlePointerDown(e, handle.id)}
-                                      onMouseDown={(e) => startCropDrag(e, handle.id)}
-                                      onTouchStart={(e) => startCropDrag(e, handle.id)}
-                                      className={`absolute w-3.5 h-3.5 bg-white border-[1.5px] border-blue-500 rounded-[1px] shadow-xs ${handle.cursor} pointer-events-auto hover:scale-125 active:scale-125 transition-transform z-30 touch-none select-none after:absolute after:-inset-1.5 after:content-['']`}
-                                      style={{
-                                        top: handle.top,
-                                        left: handle.left,
-                                        transform: 'translate(-50%, -50%)',
-                                        touchAction: 'none',
-                                      }}
-                                      title={handle.title}
-                                    />
-                                  ))}
+                                    {/* 8 Square Handles: 4 corners + 4 edge centers (half outside, half inside - Image 2 & 3) */}
+                                    {([
+                                      { id: 'top-left' as const, top: '0%', left: '0%', cursor: 'cursor-nwse-resize', title: 'Crop Top-Left' },
+                                      { id: 'top' as const, top: '0%', left: '50%', cursor: 'cursor-ns-resize', title: 'Crop Top' },
+                                      { id: 'top-right' as const, top: '0%', left: '100%', cursor: 'cursor-nesw-resize', title: 'Crop Top-Right' },
+                                      { id: 'right' as const, top: '50%', left: '100%', cursor: 'cursor-ew-resize', title: 'Crop Right' },
+                                      { id: 'bottom-right' as const, top: '100%', left: '100%', cursor: 'cursor-nwse-resize', title: 'Crop Bottom-Right' },
+                                      { id: 'bottom' as const, top: '100%', left: '50%', cursor: 'cursor-ns-resize', title: 'Crop Bottom' },
+                                      { id: 'bottom-left' as const, top: '100%', left: '0%', cursor: 'cursor-nesw-resize', title: 'Crop Bottom-Left' },
+                                      { id: 'left' as const, top: '50%', left: '0%', cursor: 'cursor-ew-resize', title: 'Crop Left' },
+                                    ]).map((handle) => (
+                                      <div
+                                        key={handle.id}
+                                        data-crop-handle="true"
+                                        onPointerDown={(e) => handleHandlePointerDown(e, handle.id)}
+                                        onMouseDown={(e) => startCropDrag(e, handle.id)}
+                                        onTouchStart={(e) => startCropDrag(e, handle.id)}
+                                        className={`absolute w-3.5 h-3.5 bg-white border-[1.5px] border-blue-500 rounded-[1px] shadow-xs ${handle.cursor} pointer-events-auto hover:scale-125 active:scale-125 transition-transform z-30 touch-none select-none after:absolute after:-inset-1.5 after:content-['']`}
+                                        style={{
+                                          top: handle.top,
+                                          left: handle.left,
+                                          transform: 'translate(-50%, -50%)',
+                                          touchAction: 'none',
+                                        }}
+                                        title={handle.title}
+                                      />
+                                    ))}
+                                  </div>
                                 </div>
-                              </div>
-                            )}
+                              )}
+                            </div>
                           </div>
                         </div>
                       ) : (
