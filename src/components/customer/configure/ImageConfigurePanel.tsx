@@ -99,13 +99,13 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   });
 
   // Custom Grid Rows & Columns
-  const [customRows, setCustomRows] = useState<number>(() => {
+  const [customRows, setCustomRows] = useState<number | string>(() => {
     if (currentImages.length >= 9) return 3;
     if (currentImages.length >= 6) return 3;
     if (currentImages.length >= 4) return 2;
     return 3;
   });
-  const [customCols, setCustomCols] = useState<number>(() => {
+  const [customCols, setCustomCols] = useState<number | string>(() => {
     if (currentImages.length >= 9) return 3;
     if (currentImages.length >= 6) return 2;
     if (currentImages.length >= 4) return 2;
@@ -114,8 +114,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
   // Applied grid specification
   const [appliedGrid, setAppliedGrid] = useState<{ rows: number; cols: number }>({
-    rows: customRows,
-    cols: customCols,
+    rows: Number(customRows) || 3,
+    cols: Number(customCols) || 2,
   });
 
   // Calculate total slots based on current preset
@@ -940,13 +940,28 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-300">Rows:</span>
                 <input
-                  type="number"
-                  min={1}
-                  max={6}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[1-6]*"
                   value={customRows}
-                  onChange={(e) =>
-                    setCustomRows(Math.max(1, Math.min(6, parseInt(e.target.value) || 1)))
-                  }
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const str = e.target.value.trim();
+                    if (str === '') {
+                      setCustomRows('');
+                      return;
+                    }
+                    const lastChar = str.slice(-1);
+                    const num = parseInt(lastChar, 10);
+                    if (!isNaN(num)) {
+                      setCustomRows(Math.max(1, Math.min(6, num)));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (customRows === '' || Number(customRows) < 1) {
+                      setCustomRows(1);
+                    }
+                  }}
                   className="w-14 py-1.5 px-2 bg-[#112347] border border-blue-800/50 rounded-xl text-center font-bold text-xs text-white"
                 />
               </div>
@@ -955,13 +970,28 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
               <div className="flex items-center gap-2">
                 <span className="text-xs font-bold text-slate-300">Columns:</span>
                 <input
-                  type="number"
-                  min={1}
-                  max={6}
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[1-6]*"
                   value={customCols}
-                  onChange={(e) =>
-                    setCustomCols(Math.max(1, Math.min(6, parseInt(e.target.value) || 1)))
-                  }
+                  onFocus={(e) => e.target.select()}
+                  onChange={(e) => {
+                    const str = e.target.value.trim();
+                    if (str === '') {
+                      setCustomCols('');
+                      return;
+                    }
+                    const lastChar = str.slice(-1);
+                    const num = parseInt(lastChar, 10);
+                    if (!isNaN(num)) {
+                      setCustomCols(Math.max(1, Math.min(6, num)));
+                    }
+                  }}
+                  onBlur={() => {
+                    if (customCols === '' || Number(customCols) < 1) {
+                      setCustomCols(1);
+                    }
+                  }}
                   className="w-14 py-1.5 px-2 bg-[#112347] border border-blue-800/50 rounded-xl text-center font-bold text-xs text-white"
                 />
               </div>
@@ -971,7 +1001,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             <button
               type="button"
               onClick={() => {
-                setAppliedGrid({ rows: customRows, cols: customCols });
+                const r = Math.max(1, Math.min(6, Number(customRows) || 1));
+                const c = Math.max(1, Math.min(6, Number(customCols) || 1));
+                setCustomRows(r);
+                setCustomCols(c);
+                setAppliedGrid({ rows: r, cols: c });
               }}
               className="px-4 py-2 bg-[#112347] hover:bg-orange-500 text-white font-extrabold text-xs rounded-xl border border-blue-800/50 transition active:scale-95 shadow-sm"
             >
