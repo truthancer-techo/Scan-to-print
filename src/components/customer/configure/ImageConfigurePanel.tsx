@@ -191,6 +191,23 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const activeSlotRef = useRef(activeSlot);
   activeSlotRef.current = activeSlot;
 
+  // Exact physical clamping so image NEVER goes outside A4 paper borders
+  const getPanBounds = (zoom: number = 100) => {
+    const el = paperGestureRef.current;
+    const w = el?.clientWidth || 300;
+    const h = el?.clientHeight || 424;
+
+    if (zoom <= 100) {
+      return { maxPanX: 0, maxPanY: 0 };
+    }
+
+    const zFactor = zoom / 100;
+    const maxPanX = Math.round((w * zFactor - w) / 2);
+    const maxPanY = Math.round((h * zFactor - h) / 2);
+
+    return { maxPanX, maxPanY };
+  };
+
   const updateActiveSlot = (patch: Partial<SlotSetting>) => {
     setSlots((prev) => ({
       ...prev,
@@ -225,6 +242,25 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const handleRotate = () => {
     const nextRot = ((activeSlot.rotation || 0) + 90) % 360;
     updateActiveSlot({ rotation: nextRot });
+  };
+
+  // Reset All Confirmation Modal State & Handler
+  const [showResetConfirmModal, setShowResetConfirmModal] = useState(false);
+
+  const handleExecuteReset = () => {
+    setLayoutPreset('1_full');
+    setActiveSlotIndex(0);
+    setSlots({
+      0: {
+        fitMode: 'Fit',
+        rotation: 0,
+        zoom: 100,
+        crop: { top: 0, bottom: 0, left: 0, right: 0 },
+        panX: 0,
+        panY: 0,
+      },
+    });
+    onResetAll?.();
   };
 
   // Crop & Pan State & Container Ref
@@ -341,10 +377,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const onTouchMove = (e: TouchEvent) => {
       if (activeSlotRef.current.isCropped) return;
 
-      const rect = el.getBoundingClientRect();
-      const canvasW = rect.width || 300;
-      const canvasH = rect.height || 424;
-
       if (e.touches.length >= 2 && isPinching) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -356,16 +388,16 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           const factor = curDist / startDist;
           const targetZoom = Math.min(400, Math.max(40, Math.round(startZoom * factor)));
 
+          const bounds = getPanBounds(targetZoom);
           const dMidX = curMid.x - startMidX;
           const dMidY = curMid.y - startMidY;
 
-          // Clamping bounds to ensure image stays strictly reachable within A4 page
-          const zFactor = targetZoom / 100;
-          const maxPanX = Math.round(canvasW * Math.max(0.4, zFactor * 0.5));
-          const maxPanY = Math.round(canvasH * Math.max(0.4, zFactor * 0.5));
-
-          const newPanX = Math.max(-maxPanX, Math.min(maxPanX, Math.round(startPanX + dMidX)));
-          const newPanY = Math.max(-maxPanY, Math.min(maxPanY, Math.round(startPanY + dMidY)));
+          const newPanX = bounds.maxPanX > 0
+            ? Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(startPanX + dMidX)))
+            : 0;
+          const newPanY = bounds.maxPanY > 0
+            ? Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(startPanY + dMidY)))
+            : 0;
 
           updateActiveSlot({
             zoom: targetZoom,
@@ -377,16 +409,20 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
 
+        const currentZoom = activeSlotRef.current.zoom || 100;
+        const bounds = getPanBounds(currentZoom);
+
+        if (bounds.maxPanX === 0 && bounds.maxPanY === 0) {
+          // At 100% zoom or less, keep image perfectly centered inside A4 paper
+          updateActiveSlot({ panX: 0, panY: 0 });
+          return;
+        }
+
         const dx = e.touches[0].clientX - dragStartX;
         const dy = e.touches[0].clientY - dragStartY;
 
-        const currentZoom = activeSlotRef.current.zoom || 100;
-        const zFactor = currentZoom / 100;
-        const maxPanX = Math.round(canvasW * Math.max(0.4, zFactor * 0.5));
-        const maxPanY = Math.round(canvasH * Math.max(0.4, zFactor * 0.5));
-
-        const newPanX = Math.max(-maxPanX, Math.min(maxPanX, Math.round(dragInitialPanX + dx)));
-        const newPanY = Math.max(-maxPanY, Math.min(maxPanY, Math.round(dragInitialPanY + dy)));
+        const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(dragInitialPanX + dx)));
+        const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(dragInitialPanY + dy)));
 
         updateActiveSlot({
           panX: newPanX,
@@ -456,16 +492,16 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           const dx = clientX - panStartRef.current.startX;
           const dy = clientY - panStartRef.current.startY;
 
-          const rect = paperGestureRef.current?.getBoundingClientRect();
-          const canvasW = rect?.width || 300;
-          const canvasH = rect?.height || 424;
           const currentZoom = activeSlot.zoom || 100;
-          const zFactor = currentZoom / 100;
-          const maxPanX = Math.round(canvasW * Math.max(0.4, zFactor * 0.5));
-          const maxPanY = Math.round(canvasH * Math.max(0.4, zFactor * 0.5));
+          const bounds = getPanBounds(currentZoom);
 
-          const newPanX = Math.max(-maxPanX, Math.min(maxPanX, Math.round(panStartRef.current.initialPanX + dx)));
-          const newPanY = Math.max(-maxPanY, Math.min(maxPanY, Math.round(panStartRef.current.initialPanY + dy)));
+          if (bounds.maxPanX === 0 && bounds.maxPanY === 0) {
+            updateActiveSlot({ panX: 0, panY: 0 });
+            return;
+          }
+
+          const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(panStartRef.current.initialPanX + dx)));
+          const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(panStartRef.current.initialPanY + dy)));
 
           updateActiveSlot({
             panX: newPanX,
@@ -721,23 +757,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             Uploaded Images ({currentImages.length})
           </span>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
-              className="text-xs font-bold text-blue-400 hover:text-blue-300 transition flex items-center gap-1"
+              className="px-2.5 py-1 rounded-xl bg-blue-950/60 hover:bg-blue-900/70 text-blue-300 hover:text-white border border-blue-800/50 text-xs font-bold transition active:scale-95 flex items-center gap-1 shadow-xs"
             >
               <span>+ Add More</span>
             </button>
 
             <button
               type="button"
-              onClick={() => {
-                if (window.confirm('Reset and remove all uploaded images?')) {
-                  onResetAll?.();
-                }
-              }}
-              className="text-xs font-bold text-rose-500 hover:text-rose-400 transition"
+              onClick={() => setShowResetConfirmModal(true)}
+              className="px-2.5 py-1 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 border border-rose-800/50 text-xs font-bold transition active:scale-95 shadow-xs"
             >
               Reset All
             </button>
@@ -951,46 +983,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         )}
       </div>
 
-      {/* ============================================================== */}
-      {/* 4. CONFIGURE SLOT SELECTOR (Positioned Above Preview Box)      */}
-      {/* ============================================================== */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <label className="text-xs font-extrabold text-slate-300">
-            Configure Slot:
-          </label>
-          <span className="text-[11px] text-slate-400">
-            Slot {activeSlotIndex + 1} of {totalSlots}
-          </span>
-        </div>
-
-        {/* Slot Pills (Slot 1, Slot 2, Slot 3...) */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-thin scrollbar-thumb-slate-700">
-          {Array.from({ length: totalSlots }).map((_, slotIdx) => {
-            const isActive = activeSlotIndex === slotIdx;
-            const slotData = slots[slotIdx];
-            const hasImage = !!slotData?.imageUrl;
-
-            return (
-              <button
-                key={slotIdx}
-                type="button"
-                onClick={() => setActiveSlotIndex(slotIdx)}
-                className={`px-3.5 py-1.5 rounded-full font-bold text-xs shrink-0 transition active:scale-95 ${
-                  isActive
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 ring-2 ring-blue-400'
-                    : hasImage
-                    ? 'bg-[#112347] text-slate-200 hover:text-white border border-blue-800/50'
-                    : 'bg-[#070e1c] text-slate-400 hover:text-slate-200 border border-slate-800'
-                }`}
-              >
-                <span>Slot {slotIdx + 1}</span>
-                {hasImage && <span className="ml-1 opacity-70 text-[10px]">●</span>}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {/* ============================================================== */}
       {/* 5. SLOT CONTROLS BAR: FIT MODE, ROTATE, CROP, ZOOM, CLEAR SLOT */}
@@ -1165,6 +1157,14 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     ? 'cover'
                     : 'contain';
 
+                const bounds = getPanBounds(slotData.zoom || 100);
+                const effectivePanX = (slotData.zoom && slotData.zoom > 100)
+                  ? Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, slotData.panX || 0))
+                  : 0;
+                const effectivePanY = (slotData.zoom && slotData.zoom > 100)
+                  ? Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, slotData.panY || 0))
+                  : 0;
+
                 return (
                   <div
                     key={slotIdx}
@@ -1202,7 +1202,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                               isPanning ? 'transition-none' : 'transition-transform duration-100 ease-out'
                             }`}
                             style={{
-                              transform: `translate3d(${slotData.panX || 0}px, ${slotData.panY || 0}px, 0)`,
+                              transform: `translate3d(${effectivePanX}px, ${effectivePanY}px, 0)`,
                               willChange: isPanning ? 'transform' : 'auto',
                             }}
                           >
@@ -1457,6 +1457,42 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             if (e.cancelable) e.preventDefault();
           }}
         />
+      )}
+
+      {/* Confirmation Modal for Reset All (Fully functional in all environments/iframes) */}
+      {showResetConfirmModal && (
+        <div className="fixed inset-0 z-[999999] flex items-center justify-center bg-black/75 p-4 backdrop-blur-xs animate-in fade-in duration-150">
+          <div className="bg-[#0b162d] border border-blue-900/80 rounded-2xl p-5 max-w-sm w-full shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-rose-950/60 border border-rose-800/60 text-rose-400 mx-auto flex items-center justify-center">
+              <Trash2 className="w-6 h-6" />
+            </div>
+            <div>
+              <h4 className="text-base font-extrabold text-white">Reset All Images?</h4>
+              <p className="text-xs text-slate-300 mt-1">
+                This will remove all uploaded images and reset your print layout.
+              </p>
+            </div>
+            <div className="flex items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowResetConfirmModal(false)}
+                className="flex-1 py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition active:scale-95"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowResetConfirmModal(false);
+                  handleExecuteReset();
+                }}
+                className="flex-1 py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition active:scale-95 shadow-lg shadow-rose-600/30"
+              >
+                Yes, Reset All
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
