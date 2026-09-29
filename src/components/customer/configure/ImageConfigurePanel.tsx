@@ -337,6 +337,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     | 'bottom-right';
 
   const [draggingHandle, setDraggingHandle] = useState<CropHandle | null>(null);
+  const draggingHandleRef = useRef<CropHandle | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
@@ -348,6 +349,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       e.preventDefault();
     }
     e.stopPropagation();
+    draggingHandleRef.current = handle;
     setDraggingHandle(handle);
   };
 
@@ -357,11 +359,14 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     try {
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     } catch (_) {}
+    draggingHandleRef.current = handle;
     setDraggingHandle(handle);
   };
 
   // Desktop mouse drag to pan
   const startPan = (e: React.MouseEvent) => {
+    // If crop is active, do not pan image with mouse
+    if (activeSlot.isCropped || draggingHandleRef.current) return;
     if ((e.target as HTMLElement)?.closest('[data-crop-handle]')) return;
     e.preventDefault();
     e.stopPropagation();
@@ -416,9 +421,36 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     });
 
     const onTouchStart = (e: TouchEvent) => {
+      // If crop mode is active or user is dragging a crop handle: NEVER start 1-finger image pan!
+      if (activeSlotRef.current.isCropped || draggingHandleRef.current) {
+        if (e.touches.length === 2) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
+          isPinching = true;
+          isDragging = false;
+
+          const dist = calcDist(e.touches[0], e.touches[1]);
+          const mid = calcMid(e.touches[0], e.touches[1]);
+
+          startDist = dist > 0 ? dist : 1;
+          startZoom = activeSlotRef.current.zoom || 100;
+          startMidX = mid.x;
+          startMidY = mid.y;
+        } else {
+          isDragging = false;
+          isPinching = false;
+        }
+        return;
+      }
+
       // If touching a crop handle, let the crop handle pointer events handle it
       const target = e.target as HTMLElement | null;
-      if (target?.closest('[data-crop-handle]')) return;
+      if (target?.closest('[data-crop-handle]')) {
+        isDragging = false;
+        isPinching = false;
+        return;
+      }
 
       if (e.touches.length === 2) {
         if (e.cancelable) e.preventDefault();
@@ -448,6 +480,22 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     };
 
     const onTouchMove = (e: TouchEvent) => {
+      // If crop mode is active or user is dragging a crop handle: NEVER pan image!
+      if (activeSlotRef.current.isCropped || draggingHandleRef.current) {
+        if (e.touches.length >= 2 && isPinching) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
+          const curDist = calcDist(e.touches[0], e.touches[1]);
+          if (startDist > 0) {
+            const factor = curDist / startDist;
+            const targetZoom = Math.min(400, Math.max(30, Math.round(startZoom * factor)));
+            updateActiveSlot({ zoom: targetZoom });
+          }
+        }
+        return;
+      }
+
       if (e.touches.length >= 2 && isPinching) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
@@ -553,23 +601,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       if (animFrameId) cancelAnimationFrame(animFrameId);
 
       animFrameId = requestAnimationFrame(() => {
-        if (isPanning && panStartRef.current) {
-          const dx = clientX - panStartRef.current.startX;
-          const dy = clientY - panStartRef.current.startY;
-
-          const currentZoom = activeSlot.zoom || 100;
-          const bounds = getPanBounds(currentZoom);
-
-          const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(panStartRef.current.initialPanX + dx)));
-          const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(panStartRef.current.initialPanY + dy)));
-
-          updateActiveSlot({
-            panX: newPanX,
-            panY: newPanY,
-          });
-          return;
-        }
-
+        // If crop handle is being dragged: ONLY crop! Never pan!
         if (draggingHandle && activeSlotContainerRef.current) {
           const rect = activeSlotContainerRef.current.getBoundingClientRect();
           const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
@@ -593,12 +625,31 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           }
 
           updateActiveSlot({ crop: newCrop });
+          return;
+        }
+
+        if (isPanning && panStartRef.current && !activeSlot.isCropped) {
+          const dx = clientX - panStartRef.current.startX;
+          const dy = clientY - panStartRef.current.startY;
+
+          const currentZoom = activeSlot.zoom || 100;
+          const bounds = getPanBounds(currentZoom);
+
+          const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(panStartRef.current.initialPanX + dx)));
+          const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(panStartRef.current.initialPanY + dy)));
+
+          updateActiveSlot({
+            panX: newPanX,
+            panY: newPanY,
+          });
+          return;
         }
       });
     };
 
     const handlePointerUp = () => {
       if (animFrameId) cancelAnimationFrame(animFrameId);
+      draggingHandleRef.current = null;
       setDraggingHandle(null);
       setIsPanning(false);
       panStartRef.current = null;
