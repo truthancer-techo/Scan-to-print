@@ -182,7 +182,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   };
 
   const { rows, cols } = getGridDimensions();
-  const totalSlots = rows * cols;
+  const totalSlots = layoutPreset === '1_full' ? Math.max(1, currentImages.length) : rows * cols;
 
   // Active slot index
   const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
@@ -190,50 +190,48 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   // Slot configurations map (indexed 0..totalSlots-1)
   const [slots, setSlots] = useState<{ [key: number]: SlotSetting }>({});
 
-  // Automatically adapt and populate grid layout when multiple images (5-12 images) are uploaded
-  useEffect(() => {
-    if (currentImages.length >= 5) {
-      let r = 3;
-      let c = 2;
-      if (currentImages.length >= 10) {
-        r = 4;
-        c = 3;
-      } else if (currentImages.length === 9) {
-        r = 3;
-        c = 3;
-      } else if (currentImages.length >= 7) {
-        r = 4;
-        c = 2;
-      } else if (currentImages.length >= 5) {
-        r = 3;
-        c = 2;
-      }
-      setCustomRows(r);
-      setCustomCols(c);
-      setAppliedGrid({ rows: r, cols: c });
-      setLayoutPreset('custom');
+  const prevImagesCountRef = useRef<number>(currentImages.length);
 
-      const total = r * c;
-      const nextSlots: { [key: number]: SlotSetting } = {};
-      for (let i = 0; i < total; i++) {
-        const assignedImg = currentImages[i];
-        nextSlots[i] = {
-          imageId: assignedImg?.id,
-          imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : undefined,
-          imageName: assignedImg?.name,
-          fitMode: 'Fit',
-          rotation: 0,
-          zoom: 100,
-          crop: { top: 0, bottom: 0, left: 0, right: 0 },
-          panX: 0,
-          panY: 0,
-          isCropped: false,
-        };
+  // Automatically adapt layout and slots when new images are added via "+ Add More" or Dropzone
+  useEffect(() => {
+    const prevCount = prevImagesCountRef.current;
+    prevImagesCountRef.current = currentImages.length;
+
+    // When new image(s) are added via "+ Add More", do NOT force a grid layout
+    if (currentImages.length > prevCount) {
+      const newImgIndex = currentImages.length - 1;
+
+      // Only adapt custom grid if user explicitly chose custom grid mode
+      if (layoutPreset === 'custom' && currentImages.length >= 5) {
+        let r = 3;
+        let c = 2;
+        if (currentImages.length >= 10) {
+          r = 4;
+          c = 3;
+        } else if (currentImages.length === 9) {
+          r = 3;
+          c = 3;
+        } else if (currentImages.length >= 7) {
+          r = 4;
+          c = 2;
+        } else if (currentImages.length >= 5) {
+          r = 3;
+          c = 2;
+        }
+        setCustomRows(r);
+        setCustomCols(c);
+        setAppliedGrid({ rows: r, cols: c });
       }
-      setSlots(nextSlots);
-      setActiveSlotIndex(0);
+
+      // Activate the newly added slot so user can immediately set it on A4 preview
+      setActiveSlotIndex(newImgIndex);
+
+      // Smoothly bring the A4 preview into view so the user immediately sees the newly added image
+      setTimeout(() => {
+        previewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 50);
     }
-  }, [currentImages.length]);
+  }, [currentImages.length, totalSlots, layoutPreset]);
 
   // Auto-populate or sync slots when layout or images change
   useEffect(() => {
@@ -242,22 +240,24 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       for (let i = 0; i < totalSlots; i++) {
         const assignedImg = currentImages[i];
         const existing = prev[i];
+        const defaultPanY = (layoutPreset === '1_full' && i > 0 && !existing) ? Math.round(i * 70) : (existing?.panY || 0);
+        const defaultZoom = (layoutPreset === '1_full' && currentImages.length > 1 && !existing) ? 75 : (existing?.zoom || 100);
         next[i] = {
           imageId: assignedImg?.id ?? existing?.imageId,
           imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : existing?.imageUrl,
           imageName: assignedImg?.name ?? existing?.imageName,
           fitMode: existing?.fitMode || 'Fit',
           rotation: existing?.rotation || 0,
-          zoom: existing?.zoom || 100,
+          zoom: defaultZoom,
           crop: existing?.crop || { top: 0, bottom: 0, left: 0, right: 0 },
           panX: existing?.panX || 0,
-          panY: existing?.panY || 0,
+          panY: defaultPanY,
           isCropped: existing?.isCropped || false,
         };
       }
       return next;
     });
-  }, [totalSlots, currentImages.length]);
+  }, [totalSlots, currentImages.length, layoutPreset]);
 
   // Handle switching preset and auto-fitting images cleanly
   const handleSelectPreset = (preset: LayoutPreset) => {
@@ -538,6 +538,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
     let isPinching = false;
     let isDragging = false;
+    let panHoldTimer: ReturnType<typeof setTimeout> | null = null;
+    let isPanLocked = false;
+    let gestureIntent: 'undecided' | 'scroll' | 'pan' = 'undecided';
+
     let startDist = 0;
     let startZoom = 100;
     let startMidX = 0;
@@ -561,6 +565,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     });
 
     const onTouchStart = (e: TouchEvent) => {
+      if (panHoldTimer) {
+        clearTimeout(panHoldTimer);
+        panHoldTimer = null;
+      }
+
       // If crop mode is active or user is dragging a crop handle: NEVER start 1-finger image pan!
       if (activeSlotRef.current.isCropped || draggingHandleRef.current) {
         if (e.touches.length === 2) {
@@ -569,6 +578,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
           isPinching = true;
           isDragging = false;
+          isPanLocked = false;
 
           const dist = calcDist(e.touches[0], e.touches[1]);
           const mid = calcMid(e.touches[0], e.touches[1]);
@@ -580,6 +590,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         } else {
           isDragging = false;
           isPinching = false;
+          isPanLocked = false;
         }
         return;
       }
@@ -589,15 +600,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       if (target?.closest('[data-crop-handle]')) {
         isDragging = false;
         isPinching = false;
+        isPanLocked = false;
         return;
       }
 
       if (e.touches.length === 2) {
+        // Two-finger pinch-zoom & pan: always operates on image smoothly
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
 
         isPinching = true;
         isDragging = false;
+        isPanLocked = false;
+        gestureIntent = 'pan';
 
         const dist = calcDist(e.touches[0], e.touches[1]);
         const mid = calcMid(e.touches[0], e.touches[1]);
@@ -609,13 +624,27 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         startPanX = activeSlotRef.current.panX || 0;
         startPanY = activeSlotRef.current.panY || 0;
       } else if (e.touches.length === 1) {
-        isDragging = true;
         isPinching = false;
+        isDragging = false;
+        isPanLocked = false;
+        gestureIntent = 'undecided';
 
         dragStartX = e.touches[0].clientX;
         dragStartY = e.touches[0].clientY;
         dragInitialPanX = activeSlotRef.current.panX || 0;
         dragInitialPanY = activeSlotRef.current.panY || 0;
+
+        // When user stops on the preview and holds finger on image (~160ms), engage image pan mode.
+        // If user is simply scrolling up/down the page, movement starts immediately (<160ms) and vertically,
+        // allowing natural page scrolling without moving the image.
+        panHoldTimer = setTimeout(() => {
+          if (gestureIntent !== 'scroll') {
+            isPanLocked = true;
+            isDragging = true;
+            gestureIntent = 'pan';
+            el.style.touchAction = 'none';
+          }
+        }, 160);
       }
     };
 
@@ -664,38 +693,84 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             panY: newPanY,
           });
         }
-      } else if (e.touches.length === 1 && isDragging) {
-        if (e.cancelable) e.preventDefault();
-        e.stopPropagation();
-
-        const currentZoom = activeSlotRef.current.zoom || 100;
-        const bounds = getPanBounds(currentZoom);
-
+      } else if (e.touches.length === 1) {
         const dx = e.touches[0].clientX - dragStartX;
         const dy = e.touches[0].clientY - dragStartY;
+        const dist = Math.hypot(dx, dy);
 
-        const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(dragInitialPanX + dx)));
-        const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(dragInitialPanY + dy)));
+        // Distinguish between page scrolling and intentional image panning
+        if (gestureIntent === 'undecided') {
+          if (dist > 8) {
+            // Movement started before 160ms hold
+            if (Math.abs(dy) >= Math.abs(dx) * 0.8) {
+              // User is scrolling the page up/down!
+              gestureIntent = 'scroll';
+              isDragging = false;
+              isPanLocked = false;
+              if (panHoldTimer) {
+                clearTimeout(panHoldTimer);
+                panHoldTimer = null;
+              }
+              // Do NOT preventDefault! Allow standard smooth page scrolling!
+              return;
+            } else if (Math.abs(dx) > Math.abs(dy) * 1.4 && Math.abs(dx) > 10) {
+              // Horizontal drag on image
+              gestureIntent = 'pan';
+              isPanLocked = true;
+              isDragging = true;
+              el.style.touchAction = 'none';
+              if (panHoldTimer) {
+                clearTimeout(panHoldTimer);
+                panHoldTimer = null;
+              }
+            }
+          } else {
+            // Minor jitter, wait for hold timer or decisive move
+            return;
+          }
+        }
 
-        updateActiveSlot({
-          panX: newPanX,
-          panY: newPanY,
-        });
+        // If scrolling the page, never move the image or prevent scroll
+        if (gestureIntent === 'scroll') {
+          return;
+        }
+
+        // Only pan if locked into pan mode (after hold or deliberate horizontal swipe)
+        if (isPanLocked && isDragging) {
+          if (e.cancelable) e.preventDefault();
+          e.stopPropagation();
+
+          const currentZoom = activeSlotRef.current.zoom || 100;
+          const bounds = getPanBounds(currentZoom);
+
+          const newPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(dragInitialPanX + dx)));
+          const newPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(dragInitialPanY + dy)));
+
+          updateActiveSlot({
+            panX: newPanX,
+            panY: newPanY,
+          });
+        }
       }
     };
 
     const onTouchEnd = (e: TouchEvent) => {
-      if (e.touches.length === 1) {
-        // Smooth transition from pinch back to 1 finger pan
+      if (panHoldTimer) {
+        clearTimeout(panHoldTimer);
+        panHoldTimer = null;
+      }
+      el.style.touchAction = 'pan-y';
+
+      if (e.touches.length === 1 && isPinching) {
         isPinching = false;
-        isDragging = true;
-        dragStartX = e.touches[0].clientX;
-        dragStartY = e.touches[0].clientY;
-        dragInitialPanX = activeSlotRef.current.panX || 0;
-        dragInitialPanY = activeSlotRef.current.panY || 0;
+        isDragging = false;
+        isPanLocked = false;
+        gestureIntent = 'undecided';
       } else if (e.touches.length === 0) {
         isPinching = false;
         isDragging = false;
+        isPanLocked = false;
+        gestureIntent = 'undecided';
         startDist = 0;
       }
     };
@@ -706,6 +781,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
+      if (panHoldTimer) clearTimeout(panHoldTimer);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
@@ -906,14 +982,24 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     });
   };
 
-  // Assign image to active slot
+  // Select thumbnail: switch to the slot containing this image, or assign to active slot
   const handleSelectThumbnail = (imgDoc: DocumentItem, index: number) => {
     onSelectDocIndex?.(index);
-    updateActiveSlot({
-      imageId: imgDoc.id,
-      imageUrl: imgDoc.previewUrl || imgDoc.url,
-      imageName: imgDoc.name,
-    });
+    const existingSlotEntry = Object.entries(slots).find(
+      ([_, rawS]) => {
+        const s = rawS as SlotSetting;
+        return s.imageId === imgDoc.id || (s.imageUrl && s.imageUrl === (imgDoc.previewUrl || imgDoc.url));
+      }
+    );
+    if (existingSlotEntry) {
+      setActiveSlotIndex(Number(existingSlotEntry[0]));
+    } else {
+      updateActiveSlot({
+        imageId: imgDoc.id,
+        imageUrl: imgDoc.previewUrl || imgDoc.url,
+        imageName: imgDoc.name,
+      });
+    }
   };
 
   // Copies change
@@ -994,7 +1080,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         type="file"
         multiple
         accept=".jpg,.jpeg,.png,.webp,.bmp"
-        onChange={(e) => handleNewFiles(e.target.files)}
+        onChange={(e) => {
+          handleNewFiles(e.target.files);
+          e.target.value = '';
+        }}
         className="hidden"
       />
 
@@ -1394,14 +1483,14 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           <div
             ref={paperGestureRef}
             onWheel={handleSlotWheel}
-            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center p-0 touch-none select-none overflow-hidden ${
+            className={`bg-white rounded-xs shadow-2xl shadow-black/80 border border-slate-300 relative transition-all duration-300 flex flex-col items-center justify-center p-0 select-none overflow-hidden ${
               isLandscape
                 ? 'w-full max-w-[420px]'
                 : 'w-full max-w-[270px] sm:max-w-[300px]'
             }`}
             style={{
               aspectRatio: isLandscape ? '297 / 210' : '210 / 297',
-              touchAction: 'none',
+              touchAction: 'pan-y',
               overflow: 'hidden',
               contain: 'paint',
               isolation: 'isolate',
@@ -1415,13 +1504,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
             {/* Printable Content Area strictly filling 100% of A4 with invisible boundary */}
             <div
-              className={`w-full h-full relative overflow-hidden grid border-none ${
-                totalSlots > 1 ? 'gap-1 p-1 bg-slate-100/50' : 'p-0 bg-transparent'
+              className={`w-full h-full relative overflow-hidden ${
+                layoutPreset !== '1_full' && totalSlots > 1
+                  ? 'grid gap-1 p-1 bg-slate-100/50'
+                  : 'p-0 bg-transparent'
               }`}
               style={{
-                gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
-                touchAction: 'none',
+                ...(layoutPreset !== '1_full' && totalSlots > 1
+                  ? {
+                      gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+                      gridTemplateRows: `repeat(${rows}, minmax(0, 1fr))`,
+                    }
+                  : {}),
+                touchAction: 'pan-y',
                 overflow: 'hidden',
                 contain: 'paint',
                 clipPath: 'inset(0)',
@@ -1466,13 +1561,22 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     }}
                     onClick={() => setActiveSlotIndex(slotIdx)}
                     className={`w-full h-full min-w-0 min-h-0 relative overflow-hidden cursor-pointer flex items-center justify-center transition-all select-none ${
-                      totalSlots > 1
+                      layoutPreset !== '1_full' && totalSlots > 1
                         ? isSlotActive
                           ? 'border border-blue-500 bg-blue-50/20 rounded-xs'
                           : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs'
-                        : 'border-none bg-transparent'
+                        : isSlotActive && currentImages.length > 1
+                          ? 'ring-2 ring-blue-500/40 rounded-xs'
+                          : 'border-none bg-transparent'
                     }`}
                     style={{
+                      ...(layoutPreset === '1_full' && totalSlots > 1
+                        ? {
+                            position: 'absolute',
+                            inset: 0,
+                            zIndex: isSlotActive ? 20 : 10,
+                          }
+                        : {}),
                       overflow: 'hidden',
                       contain: 'paint',
                       clipPath: 'inset(0)',
@@ -1481,11 +1585,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                       {hasImage ? (
                         <div
                           onMouseDown={isSlotActive && !slotData.isCropped ? startPan : undefined}
-                          className={`w-full h-full relative flex items-center justify-center overflow-hidden touch-none select-none ${
+                          className={`w-full h-full relative flex items-center justify-center overflow-hidden select-none ${
                             isSlotActive && !slotData.isCropped ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
                           }`}
                           style={{
-                            touchAction: 'none',
+                            touchAction: 'pan-y',
                             overflow: 'hidden',
                             contain: 'paint',
                             clipPath: 'inset(0)',
