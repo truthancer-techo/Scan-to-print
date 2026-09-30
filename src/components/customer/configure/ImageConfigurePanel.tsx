@@ -185,7 +185,14 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const totalSlots = layoutPreset === '1_full' ? Math.max(1, currentImages.length) : rows * cols;
 
   // Active slot index
-  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(() => selectedDocIndex || 0);
+
+  // Sync activeSlotIndex when selectedDocIndex prop changes from parent (e.g. after phone upload)
+  useEffect(() => {
+    if (typeof selectedDocIndex === 'number' && selectedDocIndex >= 0) {
+      setActiveSlotIndex(selectedDocIndex);
+    }
+  }, [selectedDocIndex]);
 
   // Slot configurations map (indexed 0..totalSlots-1)
   const [slots, setSlots] = useState<{ [key: number]: SlotSetting }>({});
@@ -240,18 +247,16 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       for (let i = 0; i < totalSlots; i++) {
         const assignedImg = currentImages[i];
         const existing = prev[i];
-        const defaultPanY = (layoutPreset === '1_full' && i > 0 && !existing) ? Math.round(i * 70) : (existing?.panY || 0);
-        const defaultZoom = (layoutPreset === '1_full' && currentImages.length > 1 && !existing) ? 75 : (existing?.zoom || 100);
         next[i] = {
           imageId: assignedImg?.id ?? existing?.imageId,
           imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : existing?.imageUrl,
           imageName: assignedImg?.name ?? existing?.imageName,
           fitMode: existing?.fitMode || 'Fit',
           rotation: existing?.rotation || 0,
-          zoom: defaultZoom,
+          zoom: existing?.zoom || 100,
           crop: existing?.crop || { top: 0, bottom: 0, left: 0, right: 0 },
           panX: existing?.panX || 0,
-          panY: defaultPanY,
+          panY: existing?.panY || 0,
           isCropped: existing?.isCropped || false,
         };
       }
@@ -1011,21 +1016,38 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   // File Upload processor for Drag & Drop / File Input
   const handleNewFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+
+    // Reset input value now that files are safely copied into memory
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+
     const newDocs: DocumentItem[] = [];
 
-    for (let idx = 0; idx < fileList.length; idx++) {
-      const file = fileList[idx];
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-      });
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
+      let dataUrl = '';
+      try {
+        dataUrl = await new Promise<string>((resolve) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => {
+            resolve(URL.createObjectURL(file));
+          };
+          reader.readAsDataURL(file);
+        });
+      } catch {
+        dataUrl = URL.createObjectURL(file);
+      }
+      if (!dataUrl) {
+        dataUrl = URL.createObjectURL(file);
+      }
 
       newDocs.push({
         id: `img-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
-        name: file.name,
-        size: file.size,
+        name: file.name || `Image ${currentImages.length + idx + 1}`,
+        size: file.size || 1024,
         type: file.type || 'image/jpeg',
         fileType: 'image',
         url: dataUrl,
@@ -1079,10 +1101,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         ref={fileInputRef}
         type="file"
         multiple
-        accept=".jpg,.jpeg,.png,.webp,.bmp"
+        accept="image/*,.jpg,.jpeg,.png,.webp,.bmp,.heic,.HEIC,.JPG,.JPEG,.PNG"
         onChange={(e) => {
-          handleNewFiles(e.target.files);
-          e.target.value = '';
+          const files = e.target.files;
+          if (files && files.length > 0) {
+            handleNewFiles(files);
+          }
         }}
         className="hidden"
       />
@@ -1560,27 +1584,53 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                       if (isSlotActive) activeSlotContainerRef.current = el;
                     }}
                     onClick={() => setActiveSlotIndex(slotIdx)}
-                    className={`w-full h-full min-w-0 min-h-0 relative overflow-hidden cursor-pointer flex items-center justify-center transition-all select-none ${
+                    className={`min-w-0 min-h-0 relative cursor-pointer flex items-center justify-center transition-all select-none ${
                       layoutPreset !== '1_full' && totalSlots > 1
                         ? isSlotActive
-                          ? 'border border-blue-500 bg-blue-50/20 rounded-xs'
-                          : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs'
+                          ? 'border border-blue-500 bg-blue-50/20 rounded-xs overflow-hidden'
+                          : 'border border-slate-200 bg-white hover:border-slate-300 rounded-xs overflow-hidden'
                         : isSlotActive && currentImages.length > 1
-                          ? 'ring-2 ring-blue-500/40 rounded-xs'
+                          ? 'ring-2 ring-blue-500/50 rounded-xs'
                           : 'border-none bg-transparent'
                     }`}
-                    style={{
-                      ...(layoutPreset === '1_full' && totalSlots > 1
+                    style={
+                      layoutPreset === '1_full' && totalSlots > 1
+                        ? {
+                            position: 'absolute',
+                            top:
+                              totalSlots === 2
+                                ? slotIdx === 0 ? '0%' : '50%'
+                                : totalSlots === 3
+                                ? `${(slotIdx * 100) / 3}%`
+                                : `${Math.floor(slotIdx / 2) * 50}%`,
+                            left:
+                              totalSlots >= 4
+                                ? `${(slotIdx % 2) * 50}%`
+                                : '0%',
+                            width: totalSlots >= 4 ? '50%' : '100%',
+                            height:
+                              totalSlots === 2
+                                ? '50%'
+                                : totalSlots === 3
+                                ? `${100 / 3}%`
+                                : '50%',
+                            zIndex: isSlotActive ? 20 : 10,
+                          }
+                        : layoutPreset === '1_full'
                         ? {
                             position: 'absolute',
                             inset: 0,
-                            zIndex: isSlotActive ? 20 : 10,
+                            width: '100%',
+                            height: '100%',
                           }
-                        : {}),
-                      overflow: 'hidden',
-                      contain: 'paint',
-                      clipPath: 'inset(0)',
-                    }}
+                        : {
+                            width: '100%',
+                            height: '100%',
+                            overflow: 'hidden',
+                            contain: 'paint',
+                            clipPath: 'inset(0)',
+                          }
+                    }
                   >
                       {hasImage ? (
                         <div
