@@ -66,6 +66,51 @@ interface ImageConfigurePanelProps {
   onAddDocuments?: (newDocs: DocumentItem[]) => void;
 }
 
+// Calculate snug wrapper dimensions for image based on slot size, image aspect ratio, and rotation
+const getImageSnugDimensions = (
+  containerW: number,
+  containerH: number,
+  ratio: number | undefined,
+  rotation: number = 0
+) => {
+  if (!ratio || containerW <= 0 || containerH <= 0) {
+    return { width: '100%', height: '100%' };
+  }
+
+  const isRot = rotation === 90 || rotation === 270;
+
+  if (isRot) {
+    // When rotated 90 or 270 degrees:
+    // CSS width W becomes visual height on screen, and CSS height H becomes visual width on screen!
+    // So visual width H <= containerW, and visual height W <= containerH.
+    // Unrotated ratio W / H must equal the image's natural aspect ratio!
+    const maxH = containerW;
+    const maxW = containerH;
+
+    let h = maxH;
+    let w = h * ratio;
+    if (w > maxW) {
+      w = maxW;
+      h = w / ratio;
+    }
+    return { width: `${Math.round(w)}px`, height: `${Math.round(h)}px` };
+  } else {
+    // When unrotated (0 or 180 degrees):
+    // Visual width is W, visual height is H.
+    // W <= containerW, H <= containerH, and W / H = ratio.
+    const maxW = containerW;
+    const maxH = containerH;
+
+    let w = maxW;
+    let h = w / ratio;
+    if (h > maxH) {
+      h = maxH;
+      w = h * ratio;
+    }
+    return { width: `${Math.round(w)}px`, height: `${Math.round(h)}px` };
+  }
+};
+
 export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   document: activeDoc,
   documents = [],
@@ -387,9 +432,51 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
   const activeSlotContainerRef = useRef<HTMLDivElement | null>(null);
   const activeImageCropBoxRef = useRef<HTMLDivElement | null>(null);
+  const slotContainersRef = useRef<{ [key: number]: HTMLDivElement | null }>({});
+  const [slotSizes, setSlotSizes] = useState<{ [key: number]: { width: number; height: number } }>({});
   const [imageAspectRatios, setImageAspectRatios] = useState<Record<string, number>>({});
   const paperGestureRef = useRef<HTMLDivElement | null>(null);
   const previewBoxRef = useRef<HTMLDivElement | null>(null);
+
+  // ResizeObserver to track exact rendered slot dimensions dynamically
+  useEffect(() => {
+    const updateSizes = () => {
+      const newSizes: { [key: number]: { width: number; height: number } } = {};
+      let changed = false;
+      Object.entries(slotContainersRef.current).forEach(([k, el]) => {
+        const idx = Number(k);
+        if (el) {
+          const w = el.clientWidth;
+          const h = el.clientHeight;
+          if (w > 0 && h > 0) {
+            newSizes[idx] = { width: w, height: h };
+            if (!slotSizes[idx] || slotSizes[idx].width !== w || slotSizes[idx].height !== h) {
+              changed = true;
+            }
+          }
+        }
+      });
+      if (changed) {
+        setSlotSizes((prev) => ({ ...prev, ...newSizes }));
+      }
+    };
+
+    updateSizes();
+
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(updateSizes);
+      Object.values(slotContainersRef.current).forEach((el) => {
+        if (el) ro?.observe(el);
+      });
+    }
+
+    window.addEventListener('resize', updateSizes);
+    return () => {
+      ro?.disconnect();
+      window.removeEventListener('resize', updateSizes);
+    };
+  }, [totalSlots, layoutPreset, activeSlotIndex]);
 
   const startCropDrag = (e: React.MouseEvent | React.TouchEvent, handle: CropHandle) => {
     if ('cancelable' in e && e.cancelable) {
@@ -656,25 +743,42 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
             const newCrop = { ...currentCrop };
 
-            if (draggingHandle.includes('top')) {
-              const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), ((clientY - rect.top) / rect.height) * 100));
-              newCrop.top = Math.round(topPct);
-            }
-            if (draggingHandle.includes('bottom')) {
-              const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((rect.bottom - clientY) / rect.height) * 100));
-              newCrop.bottom = Math.round(bottomPct);
-            }
-            if (draggingHandle.includes('left')) {
-              const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), ((clientX - rect.left) / rect.width) * 100));
-              newCrop.left = Math.round(leftPct);
-            }
-            if (draggingHandle.includes('right')) {
-              const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((rect.right - clientX) / rect.width) * 100));
-              newCrop.right = Math.round(rightPct);
-            }
+            const rot = activeSlot.rotation || 0;
+            const cx = (rect.left + rect.right) / 2;
+            const cy = (rect.top + rect.bottom) / 2;
+            const unrotatedW = targetBox.offsetWidth || rect.width;
+            const unrotatedH = targetBox.offsetHeight || rect.height;
 
-            updateActiveSlot({ crop: newCrop });
-            return;
+            if (unrotatedW > 0 && unrotatedH > 0) {
+              const scale = ((activeSlot.zoom || 100) / 100) || 1;
+              const rad = (-rot * Math.PI) / 180;
+              const dx = (clientX - cx) / scale;
+              const dy = (clientY - cy) / scale;
+              const localDx = dx * Math.cos(rad) - dy * Math.sin(rad);
+              const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
+              const localX = localDx + unrotatedW / 2;
+              const localY = localDy + unrotatedH / 2;
+
+              if (draggingHandle.includes('top')) {
+                const topPct = Math.max(0, Math.min(80 - (currentCrop.bottom || 0), (localY / unrotatedH) * 100));
+                newCrop.top = Math.round(topPct);
+              }
+              if (draggingHandle.includes('bottom')) {
+                const bottomPct = Math.max(0, Math.min(80 - (currentCrop.top || 0), ((unrotatedH - localY) / unrotatedH) * 100));
+                newCrop.bottom = Math.round(bottomPct);
+              }
+              if (draggingHandle.includes('left')) {
+                const leftPct = Math.max(0, Math.min(80 - (currentCrop.right || 0), (localX / unrotatedW) * 100));
+                newCrop.left = Math.round(leftPct);
+              }
+              if (draggingHandle.includes('right')) {
+                const rightPct = Math.max(0, Math.min(80 - (currentCrop.left || 0), ((unrotatedW - localX) / unrotatedW) * 100));
+                newCrop.right = Math.round(rightPct);
+              }
+
+              updateActiveSlot({ crop: newCrop });
+              return;
+            }
           }
         }
 
@@ -1208,7 +1312,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
           </div>
 
           {/* ROTATE, CROP & CLEAR SLOT BUTTONS */}
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap">
             {/* ROTATE */}
             <div>
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
@@ -1217,7 +1321,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
               <button
                 type="button"
                 onClick={handleRotate}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border border-blue-800/40 text-xs font-bold transition active:scale-95 shadow-xs"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border border-blue-800/40 text-xs font-bold transition active:scale-95 shadow-xs whitespace-nowrap"
                 title="Rotate 90 degrees clockwise"
               >
                 <RotateCw className="w-3.5 h-3.5 text-orange-400" />
@@ -1230,32 +1334,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1.5">
                 CROP
               </span>
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={handleToggleCrop}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition active:scale-95 shadow-xs ${
-                    activeSlot.isCropped
-                      ? 'bg-blue-600 text-white border-blue-400 ring-2 ring-blue-500/40 shadow-blue-500/30'
-                      : 'bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border-blue-800/40'
-                  }`}
-                  title="Toggle Crop Mode"
-                >
-                  <Crop className="w-3.5 h-3.5 text-orange-400" />
-                  <span>{activeSlot.isCropped ? 'Crop On' : 'Crop'}</span>
-                </button>
-
-                {activeSlot.isCropped && (activeSlot.crop?.top || activeSlot.crop?.bottom || activeSlot.crop?.left || activeSlot.crop?.right) ? (
-                  <button
-                    type="button"
-                    onClick={handleResetCrop}
-                    className="px-2 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-[11px] font-semibold text-slate-300 hover:text-white border border-slate-700 transition active:scale-95"
-                    title="Reset crop to original"
-                  >
-                    Reset
-                  </button>
-                ) : null}
-              </div>
+              <button
+                type="button"
+                onClick={handleToggleCrop}
+                className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl border text-xs font-bold transition active:scale-95 shadow-xs whitespace-nowrap ${
+                  activeSlot.isCropped
+                    ? 'bg-blue-600 text-white border-blue-400 ring-2 ring-blue-500/40 shadow-blue-500/30'
+                    : 'bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border-blue-800/40'
+                }`}
+                title="Toggle Crop Mode"
+              >
+                <Crop className="w-3.5 h-3.5 text-orange-400" />
+                <span>Crop</span>
+              </button>
             </div>
 
             {/* CLEAR SLOT */}
@@ -1266,7 +1357,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
               <button
                 type="button"
                 onClick={handleClearSlot}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 border border-rose-800/40 text-xs font-bold transition active:scale-95 shadow-xs"
+                className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 border border-rose-800/40 text-xs font-bold transition active:scale-95 shadow-xs whitespace-nowrap"
                 title="Clear current slot"
               >
                 <Trash2 className="w-3.5 h-3.5 text-rose-400" />
@@ -1352,7 +1443,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                 const imgRatio = slotData.imageUrl ? imageAspectRatios[slotData.imageUrl] : undefined;
                 const rot = slotData.rotation || 0;
                 const isRotated = rot === 90 || rot === 270;
-                const effectiveRatio = imgRatio ? (isRotated ? 1 / imgRatio : imgRatio) : undefined;
+                const containerW = slotSizes[slotIdx]?.width || slotContainersRef.current[slotIdx]?.clientWidth || 400;
+                const containerH = slotSizes[slotIdx]?.height || slotContainersRef.current[slotIdx]?.clientHeight || 560;
+                const snugDims = getImageSnugDimensions(containerW, containerH, imgRatio, rot);
 
                 const bounds = getPanBounds(slotData.zoom || 100);
                 const effectivePanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, slotData.panX || 0));
@@ -1361,7 +1454,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                 return (
                   <div
                     key={slotIdx}
-                    ref={isSlotActive ? activeSlotContainerRef : undefined}
+                    ref={(el) => {
+                      slotContainersRef.current[slotIdx] = el;
+                      if (isSlotActive) activeSlotContainerRef.current = el;
+                    }}
                     onClick={() => setActiveSlotIndex(slotIdx)}
                     className={`w-full h-full min-w-0 min-h-0 relative overflow-hidden cursor-pointer flex items-center justify-center transition-all select-none ${
                       totalSlots > 1
@@ -1404,13 +1500,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                               ref={isSlotActive ? activeImageCropBoxRef : undefined}
                               className="relative flex items-center justify-center max-w-full max-h-full"
                               style={{
-                                ...(slotData.isCropped && isSlotActive
+                                ...((slotData.isCropped && isSlotActive) || (slotData.fitMode === 'Fit' && imgRatio)
                                   ? {
-                                      aspectRatio: effectiveRatio ? `${effectiveRatio}` : undefined,
-                                      width: effectiveRatio && effectiveRatio >= 1 ? '100%' : 'auto',
-                                      height: effectiveRatio && effectiveRatio < 1 ? '100%' : 'auto',
-                                      maxWidth: '100%',
-                                      maxHeight: '100%',
+                                      width: snugDims.width,
+                                      height: snugDims.height,
+                                      maxWidth: isRotated ? `${containerH}px` : '100%',
+                                      maxHeight: isRotated ? `${containerW}px` : '100%',
                                     }
                                   : {
                                       width: '100%',
@@ -1443,7 +1538,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                                 style={{
                                   width: '100%',
                                   height: '100%',
-                                  objectFit,
+                                  objectFit: ((slotData.isCropped && isSlotActive) || (slotData.fitMode === 'Fit' && imgRatio)) ? 'fill' : objectFit,
                                   clipPath: (!slotData.isCropped && hasCrop)
                                     ? `inset(${slotCrop.top}% ${slotCrop.right}% ${slotCrop.bottom}% ${slotCrop.left}%)`
                                     : 'none',

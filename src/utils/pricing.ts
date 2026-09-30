@@ -1,4 +1,4 @@
-import {
+import type {
   ColorMode,
   DiscountRule,
   DocumentItem,
@@ -7,8 +7,8 @@ import {
   PhotoCollage,
   PricingRule,
   PrintStyle,
-} from '../types';
-import { parseAndValidatePdfPageRange } from './pdfReader';
+} from '../types/index.ts';
+import { parseAndValidatePdfPageRange } from './pdfReader.ts';
 
 export interface PdfPricingConfig {
   pdf: {
