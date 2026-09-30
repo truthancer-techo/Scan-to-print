@@ -216,10 +216,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       const total = r * c;
       const nextSlots: { [key: number]: SlotSetting } = {};
       for (let i = 0; i < total; i++) {
-        const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
+        const assignedImg = currentImages[i];
         nextSlots[i] = {
           imageId: assignedImg?.id,
-          imageUrl: assignedImg?.previewUrl || assignedImg?.url,
+          imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : undefined,
           imageName: assignedImg?.name,
           fitMode: 'Fit',
           rotation: 0,
@@ -240,12 +240,12 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     setSlots((prev) => {
       const next: { [key: number]: SlotSetting } = {};
       for (let i = 0; i < totalSlots; i++) {
-        const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
+        const assignedImg = currentImages[i];
         const existing = prev[i];
         next[i] = {
-          imageId: assignedImg?.id || (currentImages.length === 1 ? existing?.imageId : undefined),
-          imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : (currentImages.length === 1 ? existing?.imageUrl : undefined),
-          imageName: assignedImg?.name || (currentImages.length === 1 ? existing?.imageName : undefined),
+          imageId: assignedImg?.id ?? existing?.imageId,
+          imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : existing?.imageUrl,
+          imageName: assignedImg?.name ?? existing?.imageName,
           fitMode: existing?.fitMode || 'Fit',
           rotation: existing?.rotation || 0,
           zoom: existing?.zoom || 100,
@@ -281,10 +281,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const total = r * c;
     const nextSlots: { [key: number]: SlotSetting } = {};
     for (let i = 0; i < total; i++) {
-      const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
+      const assignedImg = currentImages[i];
       nextSlots[i] = {
         imageId: assignedImg?.id,
-        imageUrl: assignedImg?.previewUrl || assignedImg?.url,
+        imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : undefined,
         imageName: assignedImg?.name,
         fitMode: 'Fit',
         rotation: 0,
@@ -311,10 +311,10 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const total = r * c;
     const nextSlots: { [key: number]: SlotSetting } = {};
     for (let i = 0; i < total; i++) {
-      const assignedImg = currentImages.length === 1 ? currentImages[0] : currentImages[i];
+      const assignedImg = currentImages[i];
       nextSlots[i] = {
         imageId: assignedImg?.id,
-        imageUrl: assignedImg?.previewUrl || assignedImg?.url,
+        imageUrl: assignedImg ? (assignedImg.previewUrl || assignedImg.url) : undefined,
         imageName: assignedImg?.name,
         fitMode: 'Fit',
         rotation: 0,
@@ -327,6 +327,11 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     }
     setSlots(nextSlots);
     setActiveSlotIndex(0);
+
+    // Smoothly scroll to the A4 preview page so the user sees the applied custom grid immediately
+    setTimeout(() => {
+      previewBoxRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
   };
 
   // Ensure activeSlotIndex is within valid range
@@ -443,8 +448,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     const updateSizes = () => {
       const newSizes: { [key: number]: { width: number; height: number } } = {};
       let changed = false;
-      Object.entries(slotContainersRef.current).forEach(([k, el]) => {
+      Object.entries(slotContainersRef.current).forEach(([k, rawEl]) => {
         const idx = Number(k);
+        const el = rawEl as HTMLDivElement | null;
         if (el) {
           const w = el.clientWidth;
           const h = el.clientHeight;
@@ -466,7 +472,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(updateSizes);
-      Object.values(slotContainersRef.current).forEach((el) => {
+      (Object.values(slotContainersRef.current) as (HTMLDivElement | null)[]).forEach((el) => {
         if (el) ro?.observe(el);
       });
     }
