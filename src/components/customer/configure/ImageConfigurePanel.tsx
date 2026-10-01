@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   DocumentItem,
   ColorMode,
+  PaperType,
   PaperSize,
   PricingRule,
 } from '../../../types';
@@ -182,13 +183,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
 
   // Active slot index
   const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
-
-  // Copies input string state for smooth typing on mobile/desktop keyboards
-  const [copiesInput, setCopiesInput] = useState<string>(String(activeDoc.copies || 1));
-
-  useEffect(() => {
-    setCopiesInput(String(activeDoc.copies || 1));
-  }, [activeDoc.copies]);
 
   // Slot configurations map (indexed 0..totalSlots-1)
   const [slots, setSlots] = useState<{ [key: number]: SlotSetting }>({});
@@ -1005,37 +999,21 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     }
   };
 
-  // Copies change via +/- buttons
+  // Copies change
   const handleCopiesChange = (delta: number) => {
-    const current = parseInt(copiesInput, 10) || activeDoc.copies || 1;
-    const newCopies = Math.max(1, Math.min(100, current + delta));
-    setCopiesInput(String(newCopies));
+    const newCopies = Math.max(1, Math.min(100, (activeDoc.copies || 1) + delta));
     updateDoc({ copies: newCopies });
   };
 
-  // Direct manual copies typing (mobile-keyboard optimized)
-  const handleCopiesInputChange = (raw: string) => {
-    // Only accept numeric digits
-    const cleaned = raw.replace(/[^0-9]/g, '');
-    setCopiesInput(cleaned);
-
-    if (cleaned !== '') {
-      const parsed = parseInt(cleaned, 10);
-      if (!isNaN(parsed) && parsed >= 1) {
-        const clamped = Math.min(100, parsed);
-        updateDoc({ copies: clamped });
-      }
-    }
-  };
-
-  const handleCopiesInputBlur = () => {
-    const parsed = parseInt(copiesInput, 10);
-    if (isNaN(parsed) || parsed < 1) {
-      setCopiesInput('1');
+  // Direct manual copies set
+  const handleManualCopiesInput = (val: string) => {
+    if (val === '') {
       updateDoc({ copies: 1 });
-    } else {
-      const clamped = Math.min(100, Math.max(1, parsed));
-      setCopiesInput(String(clamped));
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      const clamped = Math.max(1, Math.min(100, num));
       updateDoc({ copies: clamped });
     }
   };
@@ -1772,36 +1750,27 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             <button
               type="button"
               onClick={() => handleCopiesChange(-1)}
-              disabled={(parseInt(copiesInput, 10) || activeDoc.copies || 1) <= 1}
+              disabled={(activeDoc.copies || 1) <= 1}
               className="w-9 h-9 rounded-xl bg-[#09152b] hover:bg-[#162d5a] text-slate-200 hover:text-white flex items-center justify-center transition active:scale-95 disabled:opacity-40"
               title="Decrease copies"
             >
               <Minus className="w-4 h-4 stroke-[2.5]" />
             </button>
             <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              value={copiesInput}
-              onChange={(e) => handleCopiesInputChange(e.target.value)}
-              onFocus={(e) => {
-                const target = e.currentTarget;
-                setTimeout(() => {
-                  try {
-                    target.select();
-                    target.setSelectionRange(0, 9999);
-                  } catch (_) {}
-                }, 50);
-              }}
-              onBlur={handleCopiesInputBlur}
-              className="w-12 h-9 text-center font-mono font-black text-sm text-white bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition"
-              title="Enter number of copies"
+              type="number"
+              min="1"
+              max="100"
+              value={activeDoc.copies || 1}
+              onChange={(e) => handleManualCopiesInput(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              className="w-12 h-9 text-center font-mono font-black text-sm text-white bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              title="Click or tap to enter number of copies"
               aria-label="Number of copies"
             />
             <button
               type="button"
               onClick={() => handleCopiesChange(1)}
-              disabled={(parseInt(copiesInput, 10) || activeDoc.copies || 1) >= 100}
+              disabled={(activeDoc.copies || 1) >= 100}
               className="w-9 h-9 rounded-xl bg-orange-500 hover:bg-orange-400 text-white flex items-center justify-center transition active:scale-95 shadow-md shadow-orange-500/30"
               title="Increase copies"
             >
@@ -1812,7 +1781,7 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       </div>
 
       {/* ============================================================== */}
-      {/* 8. SECONDARY PRINT OPTION: COLOR MODE                          */}
+      {/* 8. COLOR MODE                                                  */}
       {/* ============================================================== */}
       <div className="pt-2">
         {/* Color Mode */}
