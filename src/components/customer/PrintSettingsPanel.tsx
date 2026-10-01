@@ -43,6 +43,18 @@ export const PrintSettingsPanel: React.FC<PrintSettingsPanelProps> = ({
     updateField('copies', newCopies);
   };
 
+  const handleManualCopiesInput = (val: string) => {
+    if (val === '') {
+      updateField('copies', 1);
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      const clamped = Math.max(1, Math.min(100, num));
+      updateField('copies', clamped);
+    }
+  };
+
   return (
     <div className="bg-[#0b162d] rounded-3xl p-4 sm:p-6 border border-blue-900/50 shadow-xl shadow-black/40 space-y-5 sm:space-y-6">
       {/* Header Bar */}
@@ -294,9 +306,17 @@ export const PrintSettingsPanel: React.FC<PrintSettingsPanelProps> = ({
               >
                 <Minus className="w-4 h-4 stroke-[2.5]" />
               </button>
-              <span className="w-12 text-center font-black text-base text-white font-mono">
-                {doc.copies}
-              </span>
+              <input
+                type="number"
+                min="1"
+                max="100"
+                value={doc.copies}
+                onChange={(e) => handleManualCopiesInput(e.target.value)}
+                onFocus={(e) => e.target.select()}
+                className="w-14 h-10 text-center font-black text-base text-white font-mono bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                title="Click or tap to enter number of copies"
+                aria-label="Number of copies"
+              />
               <button
                 type="button"
                 onClick={() => handleCopiesChange(1)}

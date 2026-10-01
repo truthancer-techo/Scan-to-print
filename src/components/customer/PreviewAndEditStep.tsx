@@ -309,9 +309,22 @@ export const PreviewAndEditStep: React.FC<PreviewAndEditStepProps> = ({
                 >
                   <Minus className="w-3.5 h-3.5" />
                 </button>
-                <span className="w-8 text-center font-extrabold text-sm font-mono text-white">
-                  {activeDoc.copies}
-                </span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={activeDoc.copies}
+                  onChange={(e) => {
+                    const num = parseInt(e.target.value, 10);
+                    if (!isNaN(num)) {
+                      handleCopiesChange(Math.max(1, Math.min(100, num)) - activeDoc.copies);
+                    }
+                  }}
+                  onFocus={(e) => e.target.select()}
+                  className="w-10 h-8 text-center font-extrabold text-sm font-mono text-white bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  title="Click or tap to enter number of copies"
+                  aria-label="Number of copies"
+                />
                 <button
                   type="button"
                   onClick={() => handleCopiesChange(1)}

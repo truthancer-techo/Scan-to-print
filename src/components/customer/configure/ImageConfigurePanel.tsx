@@ -14,8 +14,6 @@ import {
   Crop,
   Trash2,
   Sliders,
-  Sparkles,
-  FileText,
   UploadCloud,
   X,
   Check,
@@ -1008,6 +1006,19 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
     updateDoc({ copies: newCopies });
   };
 
+  // Direct manual copies set
+  const handleManualCopiesInput = (val: string) => {
+    if (val === '') {
+      updateDoc({ copies: 1 });
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      const clamped = Math.max(1, Math.min(100, num));
+      updateDoc({ copies: clamped });
+    }
+  };
+
   // File Upload processor for Drag & Drop / File Input
   const handleNewFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
@@ -1746,9 +1757,17 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
             >
               <Minus className="w-4 h-4 stroke-[2.5]" />
             </button>
-            <span className="w-10 text-center font-mono font-black text-sm text-white select-none">
-              {activeDoc.copies || 1}
-            </span>
+            <input
+              type="number"
+              min="1"
+              max="100"
+              value={activeDoc.copies || 1}
+              onChange={(e) => handleManualCopiesInput(e.target.value)}
+              onFocus={(e) => e.target.select()}
+              className="w-12 h-9 text-center font-mono font-black text-sm text-white bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              title="Click or tap to enter number of copies"
+              aria-label="Number of copies"
+            />
             <button
               type="button"
               onClick={() => handleCopiesChange(1)}
@@ -1763,9 +1782,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       </div>
 
       {/* ============================================================== */}
-      {/* 8. SECONDARY PRINT OPTIONS: COLOR, PAPER TYPE, PAPER SIZE      */}
+      {/* 8. SECONDARY PRINT OPTIONS: COLOR MODE & ORIENTATION           */}
       {/* ============================================================== */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 pt-2">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
         {/* Color Mode */}
         <div className="space-y-1.5">
           <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -1793,37 +1812,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     />
                     <span>{mode}</span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Paper Type */}
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Paper Type
-          </label>
-          <div className="grid grid-cols-2 gap-2">
-            {(['Plain Paper', 'Glossy Paper'] as PaperType[]).map((type) => {
-              const isSelected = (activeDoc.paperType || 'Plain Paper') === type;
-              return (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => updateDoc({ paperType: type })}
-                  className={`min-h-[44px] py-2 px-2.5 text-xs font-bold rounded-xl border transition-all flex items-center justify-center gap-1.5 active:scale-[0.98] ${
-                    isSelected
-                      ? 'bg-orange-500/15 text-white border-orange-500 shadow-sm ring-1 ring-orange-500/40'
-                      : 'border-blue-900/40 hover:border-blue-800/60 bg-[#091326] text-slate-300 hover:bg-[#0c1833]'
-                  }`}
-                >
-                  {type === 'Glossy Paper' ? (
-                    <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
-                  ) : (
-                    <FileText className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                  )}
-                  <span>{type === 'Glossy Paper' ? 'Glossy' : 'Plain'}</span>
                 </button>
               );
             })}
