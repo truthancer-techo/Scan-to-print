@@ -2,8 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   DocumentItem,
   ColorMode,
-  Orientation,
-  PaperType,
   PaperSize,
   PricingRule,
 } from '../../../types';
@@ -1782,9 +1780,9 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
       </div>
 
       {/* ============================================================== */}
-      {/* 8. SECONDARY PRINT OPTIONS: COLOR MODE & ORIENTATION           */}
+      {/* 8. SECONDARY PRINT OPTION: COLOR MODE                          */}
       {/* ============================================================== */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 pt-2">
+      <div className="pt-2">
         {/* Color Mode */}
         <div className="space-y-1.5">
           <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
@@ -1812,32 +1810,6 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
                     />
                     <span>{mode}</span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Orientation */}
-        <div className="space-y-1.5">
-          <label className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Orientation
-          </label>
-          <div className="grid grid-cols-3 gap-1.5">
-            {(['Auto', 'Portrait', 'Landscape'] as Orientation[]).map((orient) => {
-              const isSelected = (activeDoc.orientation || 'Auto') === orient;
-              return (
-                <button
-                  key={orient}
-                  type="button"
-                  onClick={() => updateDoc({ orientation: orient })}
-                  className={`py-2 px-1 text-xs font-bold rounded-xl border transition-all flex items-center justify-center active:scale-[0.98] ${
-                    isSelected
-                      ? 'bg-orange-500/15 text-white border-orange-500 shadow-sm ring-1 ring-orange-500/40'
-                      : 'border-blue-900/40 hover:border-blue-800/60 bg-[#091326] text-slate-300 hover:bg-[#0c1833]'
-                  }`}
-                >
-                  <span>{orient}</span>
                 </button>
               );
             })}
