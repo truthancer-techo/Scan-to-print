@@ -44,6 +44,13 @@ export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
   );
   const [rangeError, setRangeError] = useState<string | null>(null);
 
+  // Copies input state for smooth typing on mobile/desktop
+  const [copiesInput, setCopiesInput] = useState<string>(String(doc.copies || 1));
+
+  useEffect(() => {
+    setCopiesInput(String(doc.copies || 1));
+  }, [doc.copies]);
+
   // Sync state if external doc changes
   useEffect(() => {
     if (doc.pageSelectionMode === 'all' || doc.pageRange === 'all') {
@@ -128,20 +135,34 @@ export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
 
   // Copies Change
   const handleCopiesChange = (delta: number) => {
-    const newCopies = Math.max(1, Math.min(100, (doc.copies || 1) + delta));
+    const current = parseInt(copiesInput, 10) || doc.copies || 1;
+    const newCopies = Math.max(1, Math.min(100, current + delta));
+    setCopiesInput(String(newCopies));
     applyPdfCalculation({ copies: newCopies });
   };
 
-  // Direct manual copies set
-  const handleManualCopiesInput = (value: string) => {
-    // If empty, let user clear to type, fallback to 1 on blur
-    if (value === '') {
-      applyPdfCalculation({ copies: 1 });
-      return;
+  // Direct manual copies typing (mobile-keyboard optimized)
+  const handleCopiesInputChange = (raw: string) => {
+    const cleaned = raw.replace(/[^0-9]/g, '');
+    setCopiesInput(cleaned);
+
+    if (cleaned !== '') {
+      const parsed = parseInt(cleaned, 10);
+      if (!isNaN(parsed) && parsed >= 1) {
+        const clamped = Math.min(100, parsed);
+        applyPdfCalculation({ copies: clamped });
+      }
     }
-    const parsed = parseInt(value, 10);
-    if (!isNaN(parsed)) {
-      const clamped = Math.max(1, Math.min(100, parsed));
+  };
+
+  const handleCopiesInputBlur = () => {
+    const parsed = parseInt(copiesInput, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      setCopiesInput('1');
+      applyPdfCalculation({ copies: 1 });
+    } else {
+      const clamped = Math.min(100, Math.max(1, parsed));
+      setCopiesInput(String(clamped));
       applyPdfCalculation({ copies: clamped });
     }
   };
@@ -395,27 +416,36 @@ export const PdfConfigurePanel: React.FC<PdfConfigurePanelProps> = ({
               <button
                 type="button"
                 onClick={() => handleCopiesChange(-1)}
-                disabled={doc.copies <= 1}
+                disabled={(parseInt(copiesInput, 10) || doc.copies || 1) <= 1}
                 className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 hover:bg-orange-500 hover:text-white disabled:opacity-40 disabled:hover:bg-[#112347] disabled:hover:text-slate-400 flex items-center justify-center text-slate-200 transition active:scale-95 shadow-xs"
                 aria-label="Decrease copies"
               >
                 <Minus className="w-4 h-4 stroke-[2.5]" />
               </button>
               <input
-                type="number"
-                min="1"
-                max="100"
-                value={doc.copies}
-                onChange={(e) => handleManualCopiesInput(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                className="w-14 h-10 text-center font-black text-lg text-white font-mono bg-[#091326] border border-blue-900/50 rounded-xl focus:outline-hidden focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition cursor-text hover:border-blue-700 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                title="Click to type number of copies"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={copiesInput}
+                onChange={(e) => handleCopiesInputChange(e.target.value)}
+                onFocus={(e) => {
+                  const target = e.currentTarget;
+                  setTimeout(() => {
+                    try {
+                      target.select();
+                      target.setSelectionRange(0, 9999);
+                    } catch (_) {}
+                  }, 50);
+                }}
+                onBlur={handleCopiesInputBlur}
+                className="w-14 h-10 text-center font-black text-lg text-white font-mono bg-[#091326] border border-blue-900/50 rounded-xl focus:outline-hidden focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50 transition cursor-text hover:border-blue-700"
+                title="Click or tap to enter number of copies"
                 aria-label="Number of copies"
               />
               <button
                 type="button"
                 onClick={() => handleCopiesChange(1)}
-                disabled={doc.copies >= 100}
+                disabled={(parseInt(copiesInput, 10) || doc.copies || 1) >= 100}
                 className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 hover:bg-orange-500 hover:text-white disabled:opacity-40 disabled:hover:bg-[#112347] disabled:hover:text-slate-400 flex items-center justify-center text-slate-200 transition active:scale-95 shadow-xs"
                 aria-label="Increase copies"
               >

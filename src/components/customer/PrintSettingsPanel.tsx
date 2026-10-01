@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   DocumentItem,
   PaperSize,
@@ -28,6 +28,12 @@ export const PrintSettingsPanel: React.FC<PrintSettingsPanelProps> = ({
 }) => {
   const isImage = doc.type.startsWith('image/') || doc.name.match(/\.(jpg|jpeg|png|webp)$/i);
 
+  const [copiesInput, setCopiesInput] = useState<string>(String(doc.copies || 1));
+
+  useEffect(() => {
+    setCopiesInput(String(doc.copies || 1));
+  }, [doc.copies]);
+
   const updateField = <K extends keyof DocumentItem>(field: K, value: DocumentItem[K]) => {
     const updated = { ...doc, [field]: value };
     const pricing = calculateDocumentPricing(updated, pricingRules);
@@ -39,18 +45,33 @@ export const PrintSettingsPanel: React.FC<PrintSettingsPanelProps> = ({
   };
 
   const handleCopiesChange = (delta: number) => {
-    const newCopies = Math.max(1, Math.min(100, doc.copies + delta));
+    const current = parseInt(copiesInput, 10) || doc.copies || 1;
+    const newCopies = Math.max(1, Math.min(100, current + delta));
+    setCopiesInput(String(newCopies));
     updateField('copies', newCopies);
   };
 
-  const handleManualCopiesInput = (val: string) => {
-    if (val === '') {
-      updateField('copies', 1);
-      return;
+  const handleCopiesInputChange = (raw: string) => {
+    const cleaned = raw.replace(/[^0-9]/g, '');
+    setCopiesInput(cleaned);
+
+    if (cleaned !== '') {
+      const parsed = parseInt(cleaned, 10);
+      if (!isNaN(parsed) && parsed >= 1) {
+        const clamped = Math.min(100, parsed);
+        updateField('copies', clamped);
+      }
     }
-    const num = parseInt(val, 10);
-    if (!isNaN(num)) {
-      const clamped = Math.max(1, Math.min(100, num));
+  };
+
+  const handleCopiesInputBlur = () => {
+    const parsed = parseInt(copiesInput, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      setCopiesInput('1');
+      updateField('copies', 1);
+    } else {
+      const clamped = Math.min(100, Math.max(1, parsed));
+      setCopiesInput(String(clamped));
       updateField('copies', clamped);
     }
   };
@@ -301,26 +322,37 @@ export const PrintSettingsPanel: React.FC<PrintSettingsPanelProps> = ({
               <button
                 type="button"
                 onClick={() => handleCopiesChange(-1)}
-                className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 hover:bg-orange-500 hover:text-white flex items-center justify-center text-slate-200 transition active:scale-95 shadow-xs"
+                disabled={(parseInt(copiesInput, 10) || doc.copies || 1) <= 1}
+                className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 hover:bg-orange-500 hover:text-white disabled:opacity-40 disabled:hover:bg-[#112347] disabled:hover:text-slate-400 flex items-center justify-center text-slate-200 transition active:scale-95 shadow-xs"
                 aria-label="Decrease copies"
               >
                 <Minus className="w-4 h-4 stroke-[2.5]" />
               </button>
               <input
-                type="number"
-                min="1"
-                max="100"
-                value={doc.copies}
-                onChange={(e) => handleManualCopiesInput(e.target.value)}
-                onFocus={(e) => e.target.select()}
-                className="w-14 h-10 text-center font-black text-base text-white font-mono bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={copiesInput}
+                onChange={(e) => handleCopiesInputChange(e.target.value)}
+                onFocus={(e) => {
+                  const target = e.currentTarget;
+                  setTimeout(() => {
+                    try {
+                      target.select();
+                      target.setSelectionRange(0, 9999);
+                    } catch (_) {}
+                  }, 50);
+                }}
+                onBlur={handleCopiesInputBlur}
+                className="w-14 h-10 text-center font-black text-base text-white font-mono bg-transparent border-none focus:outline-hidden focus:ring-1 focus:ring-orange-500/60 rounded-lg cursor-text hover:bg-white/5 transition"
                 title="Click or tap to enter number of copies"
                 aria-label="Number of copies"
               />
               <button
                 type="button"
                 onClick={() => handleCopiesChange(1)}
-                className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 hover:bg-orange-500 hover:text-white flex items-center justify-center text-slate-200 transition active:scale-95 shadow-xs"
+                disabled={(parseInt(copiesInput, 10) || doc.copies || 1) >= 100}
+                className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 hover:bg-orange-500 hover:text-white disabled:opacity-40 disabled:hover:bg-[#112347] disabled:hover:text-slate-400 flex items-center justify-center text-slate-200 transition active:scale-95 shadow-xs"
                 aria-label="Increase copies"
               >
                 <Plus className="w-4 h-4 stroke-[2.5]" />
