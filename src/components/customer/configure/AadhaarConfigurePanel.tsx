@@ -84,14 +84,15 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
   // Per-image configurations: index 0 (Front) and index 1 (Back)
   const [slots, setSlots] = useState<{ [key: number]: AadhaarSlotData }>({
     0: { rotation: 0, zoom: 100, panX: 0, panY: 0, crop: { top: 0, bottom: 0, left: 0, right: 0 }, isCropping: false },
-    1: { rotation: 0, zoom: 100, panX: 0, panY: 0, crop: { top: 0, bottom: 0, left: 0, right: 0 }, isCropping: false },
+    1: { rotation: 0, zoom: 100, panX: 0, panY: 95, crop: { top: 0, bottom: 0, left: 0, right: 0 }, isCropping: false },
   });
 
-  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(0);
+  const [activeSlotIndex, setActiveSlotIndex] = useState<number>(selectedDocIndex || 0);
   const [draggingHandle, setDraggingHandle] = useState<CropHandle | null>(null);
   const draggingHandleRef = useRef<CropHandle | null>(null);
 
-  // Panning state for A4 preview
+  // Tracking which card is currently being dragged
+  const panCardIdxRef = useRef<number | null>(null);
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ startX: number; startY: number; initialPanX: number; initialPanY: number } | null>(null);
 
@@ -106,24 +107,45 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
 
   const activeSlotRef = useRef(activeSlot);
   activeSlotRef.current = activeSlot;
+  const activeSlotIndexRef = useRef(activeSlotIndex);
+  activeSlotIndexRef.current = activeSlotIndex;
 
-  // Sync slots with uploaded images
+  // Sync activeSlotIndex with selectedDocIndex from props if changed externally
+  useEffect(() => {
+    if (selectedDocIndex !== undefined && selectedDocIndex !== activeSlotIndex) {
+      setActiveSlotIndex(selectedDocIndex);
+    }
+  }, [selectedDocIndex]);
+
+  // Sync slots with uploaded images:
+  // When 2 images exist, default Image 0 to top half (-95px) and Image 1 to bottom half (+95px)
+  // so BOTH are immediately visible on the A4 page without covering each other!
   useEffect(() => {
     setSlots((prev) => {
       const updated = { ...prev };
+      const hasTwo = currentImages.length > 1;
+
       if (currentImages[0]) {
+        const prevPanY = prev[0]?.panY;
+        const initialPanY = hasTwo ? (prevPanY !== undefined && prevPanY !== 0 ? prevPanY : -95) : (prevPanY ?? 0);
+
         updated[0] = {
           ...updated[0],
           imageUrl: currentImages[0].previewUrl || currentImages[0].url,
+          panY: initialPanY,
         };
       } else {
         updated[0] = { ...updated[0], imageUrl: undefined };
       }
 
       if (currentImages[1]) {
+        const prevPanY = prev[1]?.panY;
+        const initialPanY = prevPanY !== undefined && prevPanY !== 0 ? prevPanY : 95;
+
         updated[1] = {
           ...updated[1],
           imageUrl: currentImages[1].previewUrl || currentImages[1].url,
+          panY: initialPanY,
         };
       } else {
         updated[1] = { ...updated[1], imageUrl: undefined };
@@ -135,94 +157,88 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
   const updateActiveSlot = (updates: Partial<AadhaarSlotData>) => {
     setSlots((prev) => ({
       ...prev,
-      [activeSlotIndex]: {
-        ...prev[activeSlotIndex],
+      [activeSlotIndexRef.current]: {
+        ...prev[activeSlotIndexRef.current],
         ...updates,
       },
     }));
   };
 
-  // Pan bounds: Image can move freely across the entire A4 canvas all the way to edges/corners
-  const getPanBounds = (zoomLevel = 100) => {
-    const scale = Math.max(0.5, zoomLevel / 100);
-    const maxPanX = Math.round(120 * scale + 70);
-    const maxPanY = Math.round(170 * scale + 90);
+  const updateSlotByIdx = (idx: number, updates: Partial<AadhaarSlotData>) => {
+    setSlots((prev) => ({
+      ...prev,
+      [idx]: {
+        ...prev[idx],
+        ...updates,
+      },
+    }));
+  };
+
+  // Pan bounds: Generous bounds allowing images to move all the way from top to bottom
+  // and corner to corner across the entire A4 canvas, strictly bounded inside the outer A4 edge
+  const getPanBounds = () => {
+    const el = paperGestureRef.current;
+    const paperW = el?.clientWidth || 280;
+    const paperH = el?.clientHeight || Math.round(paperW * 1.4142);
+
+    const maxPanX = Math.round(paperW / 2 - 15);
+    const maxPanY = Math.round(paperH / 2 - 20);
+
     return { maxPanX, maxPanY };
   };
 
-  // Smooth touch gestures on A4 preview: 2-finger pinch zoom (big/small) & 1-finger move
+  // Direct card pointer down to select card and immediately start smooth dragging
+  const handleCardPointerDown = (e: React.PointerEvent, idx: number) => {
+    setActiveSlotIndex(idx);
+    onSelectDocIndex?.(idx);
+
+    const slot = slots[idx];
+    if (slot?.isCropping) return;
+    if ((e.target as HTMLElement)?.closest('[data-crop-handle]')) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    panCardIdxRef.current = idx;
+    panStartRef.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      initialPanX: slot?.panX || 0,
+      initialPanY: slot?.panY || 0,
+    };
+    setIsPanning(true);
+  };
+
+  // Touch gesture handler: 2-finger pinch zoom on active card
   useEffect(() => {
     const el = paperGestureRef.current;
     if (!el) return;
 
     let isPinching = false;
-    let isDragging = false;
-    let isPanLocked = false;
     let startDist = 0;
     let startZoom = 100;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let dragInitialPanX = 0;
-    let dragInitialPanY = 0;
-    let gestureIntent: 'undecided' | 'scroll' | 'pan' = 'undecided';
-    let panHoldTimer: ReturnType<typeof setTimeout> | null = null;
 
     const calcDist = (t1: Touch, t2: Touch) =>
       Math.hypot(t1.clientX - t2.clientX, t1.clientY - t2.clientY);
 
     const onTouchStart = (e: TouchEvent) => {
-      if (panHoldTimer) {
-        clearTimeout(panHoldTimer);
-        panHoldTimer = null;
-      }
-
-      // If user is touching a crop handle, let pointer events handle it
-      const target = e.target as HTMLElement | null;
-      if (target?.closest('[data-crop-handle]')) {
-        isDragging = false;
-        isPinching = false;
-        isPanLocked = false;
-        return;
-      }
-
-      // If in crop mode, don't pan image when touching inside
-      if (activeSlotRef.current.isCropping) {
-        return;
-      }
+      if (activeSlotRef.current.isCropping) return;
 
       if (e.touches.length === 2) {
         if (e.cancelable) e.preventDefault();
         e.stopPropagation();
         isPinching = true;
-        isDragging = false;
-        isPanLocked = false;
-        gestureIntent = 'pan';
         startDist = calcDist(e.touches[0], e.touches[1]) || 1;
         startZoom = activeSlotRef.current.zoom || 100;
-      } else if (e.touches.length === 1) {
-        isPinching = false;
-        isDragging = false;
-        isPanLocked = false;
-        gestureIntent = 'undecided';
-
-        dragStartX = e.touches[0].clientX;
-        dragStartY = e.touches[0].clientY;
-        dragInitialPanX = activeSlotRef.current.panX || 0;
-        dragInitialPanY = activeSlotRef.current.panY || 0;
-
-        panHoldTimer = setTimeout(() => {
-          if (gestureIntent !== 'scroll') {
-            isPanLocked = true;
-            isDragging = true;
-            gestureIntent = 'pan';
-          }
-        }, 100);
       }
     };
 
     const onTouchMove = (e: TouchEvent) => {
-      // If user is dragging a crop handle or in crop mode, skip panning
-      if (draggingHandleRef.current || activeSlotRef.current.isCropping) return;
+      if (activeSlotRef.current.isCropping) return;
 
       if (isPinching && e.touches.length === 2) {
         if (e.cancelable) e.preventDefault();
@@ -230,61 +246,14 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
 
         const currentDist = calcDist(e.touches[0], e.touches[1]);
         const scaleFactor = currentDist / (startDist || 1);
-        const newZoom = Math.max(40, Math.min(350, Math.round(startZoom * scaleFactor)));
+        const newZoom = Math.max(30, Math.min(350, Math.round(startZoom * scaleFactor)));
 
-        const bounds = getPanBounds(newZoom);
-        const clampedPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, activeSlotRef.current.panX || 0));
-        const clampedPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, activeSlotRef.current.panY || 0));
-
-        updateActiveSlot({
-          zoom: newZoom,
-          panX: clampedPanX,
-          panY: clampedPanY,
-        });
-        return;
-      }
-
-      if (e.touches.length === 1) {
-        const deltaX = e.touches[0].clientX - dragStartX;
-        const deltaY = e.touches[0].clientY - dragStartY;
-
-        if (gestureIntent === 'undecided') {
-          if (Math.abs(deltaY) > 8 && Math.abs(deltaY) > Math.abs(deltaX) * 1.3 && !isPanLocked) {
-            gestureIntent = 'scroll';
-            if (panHoldTimer) clearTimeout(panHoldTimer);
-            return;
-          }
-          if (Math.abs(deltaX) > 6 || Math.abs(deltaY) > 6) {
-            gestureIntent = 'pan';
-            isDragging = true;
-            isPanLocked = true;
-            if (panHoldTimer) clearTimeout(panHoldTimer);
-          }
-        }
-
-        if (gestureIntent === 'scroll') return;
-
-        if (isDragging) {
-          if (e.cancelable) e.preventDefault();
-          e.stopPropagation();
-
-          const bounds = getPanBounds(activeSlotRef.current.zoom || 100);
-          const rawPanX = dragInitialPanX + deltaX;
-          const rawPanY = dragInitialPanY + deltaY;
-          const clampedPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, rawPanX));
-          const clampedPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, rawPanY));
-
-          updateActiveSlot({ panX: clampedPanX, panY: clampedPanY });
-        }
+        updateActiveSlot({ zoom: newZoom });
       }
     };
 
     const onTouchEnd = () => {
-      if (panHoldTimer) clearTimeout(panHoldTimer);
       isPinching = false;
-      isDragging = false;
-      isPanLocked = false;
-      gestureIntent = 'undecided';
     };
 
     el.addEventListener('touchstart', onTouchStart, { passive: false });
@@ -293,29 +262,12 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
     el.addEventListener('touchcancel', onTouchEnd, { passive: false });
 
     return () => {
-      if (panHoldTimer) clearTimeout(panHoldTimer);
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
     };
-  }, [activeSlotIndex]);
-
-  // Desktop mouse drag to pan
-  const startPan = (e: React.MouseEvent) => {
-    if (activeSlot.isCropping || draggingHandleRef.current) return;
-    if ((e.target as HTMLElement)?.closest('[data-crop-handle]')) return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    panStartRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      initialPanX: activeSlot.panX || 0,
-      initialPanY: activeSlot.panY || 0,
-    };
-    setIsPanning(true);
-  };
+  }, []);
 
   // Mouse wheel zoom
   const handleSlotWheel = (e: React.WheelEvent) => {
@@ -323,14 +275,11 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
     e.stopPropagation();
     const zoomDelta = e.deltaY < 0 ? 5 : -5;
     const currentZoom = activeSlot.zoom || 100;
-    const newZoom = Math.max(40, Math.min(350, currentZoom + zoomDelta));
-    const bounds = getPanBounds(newZoom);
-    const clampedPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, activeSlot.panX || 0));
-    const clampedPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, activeSlot.panY || 0));
-    updateActiveSlot({ zoom: newZoom, panX: clampedPanX, panY: clampedPanY });
+    const newZoom = Math.max(30, Math.min(350, currentZoom + zoomDelta));
+    updateActiveSlot({ zoom: newZoom });
   };
 
-  // Global pointer handlers for smooth handle dragging & desktop panning
+  // Global pointer handlers for card dragging & crop handle dragging
   useEffect(() => {
     if (!isPanning && !draggingHandle) return;
 
@@ -351,21 +300,12 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
             const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
             const newCrop = { ...currentCrop };
 
-            const rot = activeSlot.rotation || 0;
-            const cx = (rect.left + rect.right) / 2;
-            const cy = (rect.top + rect.bottom) / 2;
             const unrotatedW = targetBox.offsetWidth || rect.width;
             const unrotatedH = targetBox.offsetHeight || rect.height;
 
             if (unrotatedW > 0 && unrotatedH > 0) {
-              const scale = ((activeSlot.zoom || 100) / 100) || 1;
-              const rad = (-rot * Math.PI) / 180;
-              const dx = (clientX - cx) / scale;
-              const dy = (clientY - cy) / scale;
-              const localDx = dx * Math.cos(rad) - dy * Math.sin(rad);
-              const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
-              const localX = localDx + unrotatedW / 2;
-              const localY = localDy + unrotatedH / 2;
+              const localX = clientX - rect.left;
+              const localY = clientY - rect.top;
 
               if (draggingHandle.includes('top')) {
                 const topPct = Math.max(0, Math.min(85 - (currentCrop.bottom || 0), (localY / unrotatedH) * 100));
@@ -390,16 +330,17 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
           }
         }
 
-        // 2. Desktop Mouse Pan across A4
-        if (isPanning && panStartRef.current && !activeSlot.isCropping) {
+        // 2. Dragging a card across the A4 canvas
+        if (isPanning && panStartRef.current && panCardIdxRef.current !== null) {
+          const targetIdx = panCardIdxRef.current;
           const dx = clientX - panStartRef.current.startX;
           const dy = clientY - panStartRef.current.startY;
-          const bounds = getPanBounds(activeSlot.zoom || 100);
+          const bounds = getPanBounds();
           const rawPanX = panStartRef.current.initialPanX + dx;
           const rawPanY = panStartRef.current.initialPanY + dy;
           const clampedPanX = Math.max(-bounds.maxPanX, Math.min(bounds.maxPanX, Math.round(rawPanX)));
           const clampedPanY = Math.max(-bounds.maxPanY, Math.min(bounds.maxPanY, Math.round(rawPanY)));
-          updateActiveSlot({ panX: clampedPanX, panY: clampedPanY });
+          updateSlotByIdx(targetIdx, { panX: clampedPanX, panY: clampedPanY });
         }
       });
     };
@@ -410,6 +351,7 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
       setDraggingHandle(null);
       setIsPanning(false);
       panStartRef.current = null;
+      panCardIdxRef.current = null;
     };
 
     window.addEventListener('mousemove', handlePointerMove, { passive: false });
@@ -426,11 +368,11 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
       window.removeEventListener('touchend', handlePointerUp);
       window.removeEventListener('touchcancel', handlePointerUp);
     };
-  }, [draggingHandle, isPanning, activeSlot.crop, activeSlot.zoom, activeSlot.isCropping]);
+  }, [draggingHandle, isPanning, activeSlot.crop]);
 
   const handleRotate = () => {
-    const cur = activeSlot.rotation || 0;
-    updateActiveSlot({ rotation: (cur + 90) % 360 });
+    const newRotation = ((activeSlot.rotation || 0) + 90) % 360;
+    updateActiveSlot({ rotation: newRotation });
   };
 
   const handleToggleCrop = () => {
@@ -693,7 +635,7 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
       </div>
 
       {/* ============================================================== */}
-      {/* 2. MAIN LIVE A4 PRINT LAYOUT PREVIEW (ALL ACTIONS IN A4)       */}
+      {/* 2. MAIN LIVE A4 PRINT LAYOUT PREVIEW (PURE SINGLE A4 CANVAS)   */}
       {/* ============================================================== */}
       <div className="space-y-3">
         {/* Header & Tool Bar */}
@@ -746,206 +688,136 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
           </label>
         </div>
 
-        {/* Realistic A4 White Paper Container: Pure Unified A4 Sheet, NO Grid, NO Separate Window */}
+        {/* Realistic A4 White Paper Container: Strictly Clamped, Pure White A4 */}
         <div className="bg-[#070e1c] p-4 sm:p-6 rounded-2xl border border-blue-900/50 flex flex-col justify-center items-center overflow-hidden">
-          {/* A4 Sheet: strict 1:1.4142 aspect ratio, pure white, strictly containing all children */}
+          {/* A4 Sheet: strict 1:1.4142 aspect ratio, pure white, ZERO dividing lines, ZERO middle boundaries */}
           <div
             ref={paperGestureRef}
             onWheel={handleSlotWheel}
-            className="relative bg-white text-slate-800 rounded-sm shadow-2xl overflow-hidden border border-slate-300 w-full max-w-[280px] sm:max-w-[320px] select-none flex flex-col items-center justify-center"
+            className="relative bg-white text-slate-800 rounded-sm shadow-2xl border border-slate-300 w-full max-w-[280px] sm:max-w-[320px] select-none overflow-hidden"
             style={{
               aspectRatio: '1 / 1.4142',
-              touchAction: 'pan-y',
+              touchAction: 'none',
               contain: 'paint',
               clipPath: 'inset(0)',
+              WebkitClipPath: 'inset(0)',
+              isolation: 'isolate',
+              transform: 'translateZ(0)',
             }}
           >
-            {/* If 1 image uploaded: Single unified canvas, user can position image anywhere across the whole A4 sheet */}
-            {!hasMultipleImages ? (
-              activeSlot.imageUrl ? (
+            {/* Render both uploaded images simultaneously on the same single full A4 sheet */}
+            {[0, 1].map((idx) => {
+              const s = slots[idx];
+              if (!s || !s.imageUrl) return null;
+              const isSelected = activeSlotIndex === idx;
+
+              const crop = s.crop || { top: 0, bottom: 0, left: 0, right: 0 };
+              const isCardCropping = s.isCropping;
+
+              // Exact cropped dimensions
+              const cropW = Math.max(10, 100 - (crop.left || 0) - (crop.right || 0));
+              const cropH = Math.max(10, 100 - (crop.top || 0) - (crop.bottom || 0));
+              const hasAppliedCrop = (crop.top > 0 || crop.bottom > 0 || crop.left > 0 || crop.right > 0) && !isCardCropping;
+
+              // Base standard size for card on A4 canvas
+              const baseW = 215;
+              const baseH = 135;
+
+              // Cropped box size shrinks to cropped area with zero ghost margins
+              const visibleW = hasAppliedCrop ? Math.round((cropW / 100) * baseW) : baseW;
+              const visibleH = hasAppliedCrop ? Math.round((cropH / 100) * baseH) : baseH;
+
+              return (
                 <div
-                  onMouseDown={startPan}
-                  className={`w-full h-full relative flex items-center justify-center overflow-hidden select-none ${
-                    isPanning && !activeSlot.isCropping ? 'cursor-grabbing' : 'cursor-grab'
+                  key={idx}
+                  onPointerDown={(e) => handleCardPointerDown(e, idx)}
+                  className={`absolute flex items-center justify-center cursor-pointer select-none rounded-sm transition-shadow ${
+                    isSelected
+                      ? (hasMultipleImages ? 'ring-2 ring-blue-500 shadow-md ring-offset-1 ring-offset-white' : '')
+                      : 'hover:ring-1 hover:ring-slate-300 opacity-95'
                   }`}
                   style={{
-                    touchAction: 'pan-y',
-                    contain: 'paint',
-                    clipPath: 'inset(0)',
-                    overflow: 'hidden',
+                    left: '50%',
+                    top: '50%',
+                    transform: `translate3d(calc(-50% + ${s.panX || 0}px), calc(-50% + ${s.panY || 0}px), 0)`,
+                    zIndex: isSelected ? 30 : 10,
+                    touchAction: 'none',
                   }}
                 >
-                  {/* Panned container with strict bounding so it never escapes A4 corners */}
+                  {/* Scaled & Rotated Container */}
                   <div
-                    className={`w-full h-full relative flex items-center justify-center ${
-                      isPanning ? 'transition-none' : 'transition-transform duration-100 ease-out'
-                    }`}
+                    ref={isSelected ? activeImageContainerRef : undefined}
+                    className="relative flex items-center justify-center"
                     style={{
-                      transform: `translate3d(${activeSlot.panX || 0}px, ${activeSlot.panY || 0}px, 0)`,
-                      willChange: isPanning ? 'transform' : 'auto',
-                      contain: 'paint',
-                      clipPath: 'inset(0)',
+                      transform: `rotate(${s.rotation || 0}deg) scale(${
+                        (s.zoom || 100) / 100
+                      })`,
+                      transformOrigin: 'center center',
                     }}
                   >
-                    {/* Scaled & Rotated Image Box */}
+                    {/* Visible Cropped Container with Zero Ghost Margins (Never cuts off on zoom!) */}
                     <div
-                      ref={activeImageContainerRef}
-                      className="relative flex items-center justify-center max-w-[94%] max-h-[94%]"
+                      className="relative overflow-hidden flex items-center justify-center select-none"
                       style={{
-                        transform: `rotate(${activeSlot.rotation || 0}deg) scale(${
-                          (activeSlot.zoom || 100) / 100
-                        })`,
-                        contain: 'paint',
+                        width: `${visibleW}px`,
+                        height: `${visibleH}px`,
                       }}
                     >
                       <img
-                        src={activeSlot.imageUrl}
+                        src={s.imageUrl}
                         alt="Aadhaar Card"
-                        className="w-full h-auto max-h-[380px] object-contain select-none pointer-events-none"
+                        className="select-none pointer-events-none max-w-none max-h-none"
                         style={{
-                          clipPath:
-                            activeSlot.crop && !activeSlot.isCropping
-                              ? `inset(${activeSlot.crop.top}% ${activeSlot.crop.right}% ${activeSlot.crop.bottom}% ${activeSlot.crop.left}%)`
-                              : undefined,
+                          position: 'absolute',
+                          width: hasAppliedCrop ? `${(100 / cropW) * 100}%` : '100%',
+                          height: hasAppliedCrop ? `${(100 / cropH) * 100}%` : '100%',
+                          left: hasAppliedCrop ? `-${(crop.left / cropW) * 100}%` : '0%',
+                          top: hasAppliedCrop ? `-${(crop.top / cropH) * 100}%` : '0%',
+                          objectFit: 'contain',
                         }}
                       />
-
-                      {/* IN-PLACE CROP BOX (EXACTLY MATCHING USER SCREENSHOT!) */}
-                      {activeSlot.isCropping && (
-                        <div
-                          className="absolute pointer-events-none z-30 select-none"
-                          style={{
-                            top: `${activeSlot.crop?.top || 0}%`,
-                            bottom: `${activeSlot.crop?.bottom || 0}%`,
-                            left: `${activeSlot.crop?.left || 0}%`,
-                            right: `${activeSlot.crop?.right || 0}%`,
-                          }}
-                        >
-                          {/* Blue Rectangle Border */}
-                          <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
-
-                          {/* Diagonal 'X' Cross Lines (Matching User's Screenshot!) */}
-                          <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-                            <line x1="0%" y1="0%" x2="100%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
-                            <line x1="100%" y1="0%" x2="0%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
-                          </svg>
-
-                          {/* 8 Square Points: White squares with blue border (Matching User's Screenshot!) */}
-                          {CROP_HANDLES.map((handle) => (
-                            <div
-                              key={handle.id}
-                              data-crop-handle="true"
-                              onPointerDown={(e) => handleCropHandlePointerDown(e, handle.id)}
-                              className={`absolute w-3.5 h-3.5 bg-white border-2 border-blue-600 shadow-sm ${handle.cursor} pointer-events-auto hover:scale-125 active:scale-135 transition-transform z-40 touch-none select-none`}
-                              style={{
-                                top: handle.top,
-                                left: handle.left,
-                                transform: 'translate(-50%, -50%)',
-                              }}
-                            />
-                          ))}
-                        </div>
-                      )}
                     </div>
-                  </div>
-                </div>
-              ) : null
-            ) : (
-              /* If 2 images (Front & Back): Both placed cleanly on the A4 page, tap to select & drag */
-              <div className="w-full h-full p-2 flex flex-col justify-between overflow-hidden relative">
-                {[0, 1].map((idx) => {
-                  const s = slots[idx];
-                  if (!s || !s.imageUrl) return null;
-                  const isSelected = activeSlotIndex === idx;
 
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => setActiveSlotIndex(idx)}
-                      onMouseDown={isSelected && !s.isCropping ? startPan : undefined}
-                      className={`relative flex-1 flex items-center justify-center overflow-hidden cursor-pointer select-none ${
-                        isSelected && !s.isCropping ? (isPanning ? 'cursor-grabbing' : 'cursor-grab') : ''
-                      }`}
-                      style={{
-                        touchAction: 'pan-y',
-                        contain: 'paint',
-                        clipPath: 'inset(0)',
-                        overflow: 'hidden',
-                      }}
-                    >
+                    {/* IN-PLACE CROP BOX OVERLAY (MATCHING SCREENSHOT) */}
+                    {isSelected && isCardCropping && (
                       <div
-                        className={`w-full h-full relative flex items-center justify-center ${
-                          isPanning && isSelected ? 'transition-none' : 'transition-transform duration-100 ease-out'
-                        }`}
+                        className="absolute pointer-events-none z-30 select-none"
                         style={{
-                          transform: `translate3d(${s.panX || 0}px, ${s.panY || 0}px, 0)`,
-                          willChange: isPanning && isSelected ? 'transform' : 'auto',
-                          contain: 'paint',
-                          clipPath: 'inset(0)',
+                          top: `${crop.top}%`,
+                          bottom: `${crop.bottom}%`,
+                          left: `${crop.left}%`,
+                          right: `${crop.right}%`,
                         }}
                       >
-                        <div
-                          ref={isSelected ? activeImageContainerRef : undefined}
-                          className="relative flex items-center justify-center max-w-[94%] max-h-[94%]"
-                          style={{
-                            transform: `rotate(${s.rotation || 0}deg) scale(${
-                              (s.zoom || 100) / 100
-                            })`,
-                            contain: 'paint',
-                          }}
-                        >
-                          <img
-                            src={s.imageUrl}
-                            alt=""
-                            className="w-full h-auto max-h-[175px] object-contain select-none pointer-events-none"
+                        {/* Blue Rectangle Border */}
+                        <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
+
+                        {/* Diagonal 'X' Cross Lines */}
+                        <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
+                          <line x1="0%" y1="0%" x2="100%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
+                          <line x1="100%" y1="0%" x2="0%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
+                        </svg>
+
+                        {/* 8 Square Points: White squares with blue border */}
+                        {CROP_HANDLES.map((handle) => (
+                          <div
+                            key={handle.id}
+                            data-crop-handle="true"
+                            onPointerDown={(e) => handleCropHandlePointerDown(e, handle.id)}
+                            className={`absolute w-3.5 h-3.5 bg-white border-2 border-blue-600 shadow-sm ${handle.cursor} pointer-events-auto hover:scale-125 active:scale-135 transition-transform z-40 touch-none select-none`}
                             style={{
-                              clipPath:
-                                s.crop && !s.isCropping
-                                  ? `inset(${s.crop.top}% ${s.crop.right}% ${s.crop.bottom}% ${s.crop.left}%)`
-                                  : undefined,
+                              top: handle.top,
+                              left: handle.left,
+                              transform: 'translate(-50%, -50%)',
                             }}
                           />
-
-                          {/* In-Place Crop Box for selected card */}
-                          {isSelected && s.isCropping && (
-                            <div
-                              className="absolute pointer-events-none z-30 select-none"
-                              style={{
-                                top: `${s.crop?.top || 0}%`,
-                                bottom: `${s.crop?.bottom || 0}%`,
-                                left: `${s.crop?.left || 0}%`,
-                                right: `${s.crop?.right || 0}%`,
-                              }}
-                            >
-                              <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
-
-                              <svg className="absolute inset-0 w-full h-full pointer-events-none overflow-visible">
-                                <line x1="0%" y1="0%" x2="100%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
-                                <line x1="100%" y1="0%" x2="0%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
-                              </svg>
-
-                              {CROP_HANDLES.map((handle) => (
-                                <div
-                                  key={handle.id}
-                                  data-crop-handle="true"
-                                  onPointerDown={(e) => handleCropHandlePointerDown(e, handle.id)}
-                                  className={`absolute w-3.5 h-3.5 bg-white border-2 border-blue-600 shadow-sm ${handle.cursor} pointer-events-auto hover:scale-125 active:scale-135 transition-transform z-40 touch-none select-none`}
-                                  style={{
-                                    top: handle.top,
-                                    left: handle.left,
-                                    transform: 'translate(-50%, -50%)',
-                                  }}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                        ))}
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
