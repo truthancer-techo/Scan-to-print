@@ -122,7 +122,9 @@ export const CustomerPrintPortal: React.FC = () => {
   }
 
   const activeDoc = documents[selectedDocIndex] || documents[0];
+  const isAadhaarSession = !!activeDoc && activeDoc.serviceType === 'aadhaar';
   const isImageSession =
+    !isAadhaarSession &&
     !!activeDoc &&
     (activeDoc.fileType === 'image' ||
       activeDoc.type?.startsWith('image/') ||
@@ -244,10 +246,12 @@ export const CustomerPrintPortal: React.FC = () => {
 
               <div className="min-w-0">
                 <h2 className="font-extrabold text-sm sm:text-base text-white truncate">
-                  Configure your print
+                  {isAadhaarSession ? 'Configure Aadhaar Print' : 'Configure your print'}
                 </h2>
                 <p className="text-[11px] sm:text-xs text-slate-400 truncate">
-                  Select options for each document. Live price updates instantly.
+                  {isAadhaarSession
+                    ? 'Front + Back on A4 • Live price updates instantly'
+                    : 'Select options for each document. Live price updates instantly.'}
                 </p>
               </div>
             </div>
@@ -351,8 +355,8 @@ export const CustomerPrintPortal: React.FC = () => {
             </div>
           </div>
 
-          {/* List of Documents - Only shown for PDF/other documents; hidden for Image workspace */}
-          {!isImageSession && (
+          {/* List of Documents - Only shown for PDF/other documents; hidden for Image workspace or Aadhaar workspace */}
+          {!isImageSession && !isAadhaarSession && (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 sm:gap-4">
               {documents.map((doc, idx) => (
                 <DocumentCard
@@ -372,7 +376,7 @@ export const CustomerPrintPortal: React.FC = () => {
           {/* Active Document Settings Panel */}
           {activeDoc && (
             <DocumentConfigureRouter
-              key={isImageSession ? 'image-workspace' : activeDoc.id}
+              key={isAadhaarSession ? 'aadhaar-workspace' : isImageSession ? 'image-workspace' : activeDoc.id}
               document={activeDoc}
               documents={documents}
               selectedDocIndex={selectedDocIndex}

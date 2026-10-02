@@ -2,6 +2,7 @@ import React from 'react';
 import { DocumentItem, PricingRule } from '../../../types';
 import { PdfConfigurePanel } from './PdfConfigurePanel';
 import { ImageConfigurePanel } from './ImageConfigurePanel';
+import { AadhaarConfigurePanel } from './AadhaarConfigurePanel';
 import { PrintSettingsPanel } from '../PrintSettingsPanel';
 
 interface DocumentConfigureRouterProps {
@@ -19,7 +20,8 @@ interface DocumentConfigureRouterProps {
 }
 
 /**
- * File-type based configuration routing architecture:
+ * File-type & Service-type based configuration routing architecture:
+ * Aadhaar Service → AadhaarConfigurePanel
  * PDF → PdfConfigurePanel
  * JPG/PNG/WEBP → ImageConfigurePanel
  * Other/General → PrintSettingsPanel
@@ -37,6 +39,24 @@ export const DocumentConfigureRouter: React.FC<DocumentConfigureRouterProps> = (
   onResetAll,
   onAddDocuments,
 }) => {
+  // Check if document was uploaded for dedicated Aadhaar Front + Back service
+  if (doc.serviceType === 'aadhaar') {
+    return (
+      <AadhaarConfigurePanel
+        document={doc}
+        documents={documents}
+        pricingRules={pricingRules}
+        onChange={onChange}
+        totalDocumentsCount={totalDocumentsCount}
+        selectedDocIndex={selectedDocIndex}
+        onSelectDocIndex={onSelectDocIndex}
+        onRemoveDoc={onRemoveDoc}
+        onResetAll={onResetAll}
+        onAddDocuments={onAddDocuments}
+      />
+    );
+  }
+
   const isPdf =
     doc.fileType === 'pdf' ||
     doc.type === 'application/pdf' ||

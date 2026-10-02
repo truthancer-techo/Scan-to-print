@@ -83,6 +83,7 @@ export interface DocumentItem {
   originalUrl?: string; // Guaranteed reference to original untouched source PDF
   isAadhaarDerivative?: boolean;
   useAadhaarLayout?: boolean; // When true, uses the A4 Aadhaar layout derivative for print/preview
+  serviceType?: 'aadhaar' | 'passport';
 }
 
 export interface BoundingBox {

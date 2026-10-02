@@ -517,26 +517,28 @@ export function syncDocumentSettings(
     updated.selectedPages = Array.from({ length: updated.pageCount }, (_, i) => i + 1);
   }
 
-  if (isPdf) {
-    // If Aadhaar card A4 layout is active, it generates 1 A4 physical sheet per copy
-    const isAadhaarActive =
-      updated.detectedDocumentType === 'aadhaar_card' && updated.useAadhaarLayout !== false;
+  // If Aadhaar card A4 layout is active, it generates 1 A4 physical sheet per copy
+  const isAadhaarActive =
+    (updated.detectedDocumentType === 'aadhaar_card' || updated.serviceType === 'aadhaar') &&
+    updated.useAadhaarLayout !== false;
 
-    if (isAadhaarActive) {
-      const rule = pricingRules.find(
-        (r) => r.colorMode === updated.colorMode && r.paperSize === (updated.paperSize || 'A4')
-      );
-      const rate = rule?.ratePerPage ?? (updated.colorMode === 'Colour' ? 8.0 : 3.0);
-      const copies = updated.copies || 1;
-      updated.printablePages = 1;
-      updated.selectedPages = [1];
-      updated.sheetsCount = copies;
-      updated.physicalSheets = copies;
-      updated.ratePerPage = rate;
-      updated.subtotal = rate * copies;
-      updated.totalPrice = rate * copies;
-      return updated;
-    }
+  if (isAadhaarActive) {
+    const rule = pricingRules.find(
+      (r) => r.colorMode === updated.colorMode && r.paperSize === (updated.paperSize || 'A4')
+    );
+    const rate = rule?.ratePerPage ?? (updated.colorMode === 'Colour' ? 8.0 : 3.0);
+    const copies = updated.copies || 1;
+    updated.printablePages = 1;
+    updated.selectedPages = [1];
+    updated.sheetsCount = copies;
+    updated.physicalSheets = copies;
+    updated.ratePerPage = rate;
+    updated.subtotal = rate * copies;
+    updated.totalPrice = rate * copies;
+    return updated;
+  }
+
+  if (isPdf) {
 
     const calc = calculatePdfPrice(
       {
