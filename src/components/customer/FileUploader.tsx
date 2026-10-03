@@ -437,8 +437,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
           </h3>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          {/* CARD 1: Aadhaar Front + Back */}
+        <div className="grid grid-cols-1 gap-3.5">
+          {/* CARD 1: Aadhaar Front + Back — A4 */}
           <button
             type="button"
             onClick={() => aadhaarFileInputRef.current?.click()}
@@ -454,17 +454,17 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <h4 className="text-sm font-extrabold text-white group-hover:text-orange-400 transition-colors">
-                  Aadhaar Front + Back
+                  Aadhaar Front + Back — A4
                 </h4>
                 <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-                  Set front & back on A4
+                  Set front & back on one A4 sheet
                 </p>
               </div>
             </div>
 
             <div className="mt-3.5 pt-2.5 border-t border-blue-900/30 flex items-center justify-between">
               <span className="text-xs font-bold text-orange-400 group-hover:text-orange-300 flex items-center gap-1">
-                <span>Open Service →</span>
+                <span>Open Setup →</span>
               </span>
             </div>
           </button>
@@ -481,94 +481,8 @@ export const FileUploader: React.FC<FileUploaderProps> = ({
               e.target.value = '';
             }}
           />
-
-          {/* CARD 2: Passport Size Photo */}
-          <button
-            type="button"
-            onClick={() => setActiveService('passport')}
-            className="group w-full text-left p-4 rounded-2xl bg-[#0b162d] border border-blue-900/50 hover:border-orange-500/50 hover:bg-[#0e1d3b] transition-all duration-200 shadow-lg shadow-black/20 flex flex-col justify-between cursor-pointer active:scale-[0.98]"
-          >
-            <div className="flex items-start gap-3">
-              <div className="w-10 h-10 rounded-xl bg-[#112347] border border-blue-800/40 flex items-center justify-center text-xl shrink-0 group-hover:scale-105 transition-transform shadow-inner">
-                <span role="img" aria-label="Passport Size Photo">📸</span>
-              </div>
-              <div className="min-w-0 flex-1">
-                <h4 className="text-sm font-extrabold text-white group-hover:text-orange-400 transition-colors">
-                  Passport Size Photo
-                </h4>
-                <p className="text-xs text-slate-400 mt-0.5 line-clamp-1">
-                  Create passport photos on A4
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-3.5 pt-2.5 border-t border-blue-900/30 flex items-center justify-between">
-              <span className="text-xs font-bold text-orange-400 group-hover:text-orange-300 flex items-center gap-1">
-                <span>Open Service →</span>
-              </span>
-            </div>
-          </button>
         </div>
       </div>
-
-      {/* Service Modal for other services if needed */}
-      {activeService === 'passport' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-[#0b162d] border border-blue-900/80 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 relative">
-            <button
-              type="button"
-              onClick={() => setActiveService(null)}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full bg-[#112347] hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition active:scale-95 border border-blue-800/40"
-              aria-label="Close"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-2xl bg-[#112347] border border-blue-800/50 flex items-center justify-center text-2xl shadow-inner shrink-0">
-                <span>📸</span>
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-white">
-                  Passport Size Photo
-                </h3>
-                <p className="text-xs text-orange-400 font-medium">
-                  Create passport photos on A4
-                </p>
-              </div>
-            </div>
-
-            <div className="bg-[#091326] rounded-2xl p-4 border border-blue-900/40 text-xs text-slate-300 space-y-2">
-              <p>
-                This dedicated service lets you create passport size photos on an A4 sheet ready for printing.
-              </p>
-              <p className="text-slate-400 text-[11px]">
-                Select your photo now to arrange and configure it for printing.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setActiveService(null);
-                  fileInputRef.current?.click();
-                }}
-                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white font-bold text-xs sm:text-sm shadow-lg shadow-orange-500/25 transition active:scale-95 cursor-pointer"
-              >
-                Upload Photo
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveService(null)}
-                className="py-3 px-4 rounded-xl bg-[#112347] hover:bg-[#162d5a] text-slate-300 hover:text-white font-bold text-xs sm:text-sm border border-blue-800/40 transition active:scale-95 cursor-pointer"
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Privacy guarantee */}
       <div className="text-center pt-2">

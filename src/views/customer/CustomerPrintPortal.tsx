@@ -232,128 +232,128 @@ export const CustomerPrintPortal: React.FC = () => {
       {currentStep === 2 && (
         <div className="max-w-4xl mx-auto space-y-5 sm:space-y-6">
           {/* Top Actions: Back Button, Add more */}
-          <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 bg-[#0b162d] p-3.5 sm:p-4 rounded-2xl border border-blue-900/50 shadow-xl">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                type="button"
-                onClick={handleBack}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border border-blue-800/40 rounded-xl font-bold text-xs sm:text-sm transition active:scale-95 shrink-0 shadow-sm"
-                aria-label="Back to Upload"
-              >
-                <ArrowLeft className="w-4 h-4 text-slate-300 shrink-0" />
-                <span>Back</span>
-              </button>
+          {!isAadhaarSession && (
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 bg-[#0b162d] p-3.5 sm:p-4 rounded-2xl border border-blue-900/50 shadow-xl">
+              <div className="flex items-center gap-3 min-w-0">
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 bg-[#112347] hover:bg-[#162c5a] text-slate-200 hover:text-white border border-blue-800/40 rounded-xl font-bold text-xs sm:text-sm transition active:scale-95 shrink-0 shadow-sm"
+                  aria-label="Back to Upload"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-300 shrink-0" />
+                  <span>Back</span>
+                </button>
 
-              <div className="min-w-0">
-                <h2 className="font-extrabold text-sm sm:text-base text-white truncate">
-                  {isAadhaarSession ? 'Configure Aadhaar Print' : 'Configure your print'}
-                </h2>
-                <p className="text-[11px] sm:text-xs text-slate-400 truncate">
-                  {isAadhaarSession
-                    ? 'Front + Back on A4 • Live price updates instantly'
-                    : 'Select options for each document. Live price updates instantly.'}
-                </p>
+                <div className="min-w-0">
+                  <h2 className="font-extrabold text-sm sm:text-base text-white truncate">
+                    Configure your print
+                  </h2>
+                  <p className="text-[11px] sm:text-xs text-slate-400 truncate">
+                    Select options for each document. Live price updates instantly.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <label className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white rounded-full text-xs font-black cursor-pointer shadow-md shadow-orange-500/20 transition active:scale-95 shrink-0">
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>Add document</span>
+                  <input
+                    type="file"
+                    multiple
+                    accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.zip"
+                    onChange={async (e) => {
+                      if (e.target.files && e.target.files.length > 0) {
+                        const files: File[] = Array.from(e.target.files);
+                        const docs: DocumentItem[] = [];
+
+                        for (let idx = 0; idx < files.length; idx++) {
+                          const file = files[idx];
+                          const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+                          const isImg = file.type.startsWith('image/');
+                          const fileUrl = URL.createObjectURL(file);
+
+                          if (isPdf) {
+                            const pdfMeta = await detectPdfMetadata(file);
+                            const pageCount = pdfMeta.pageCount;
+                            const docItem: DocumentItem = {
+                              id: `doc-${Date.now()}-${idx}`,
+                              name: file.name,
+                              size: file.size,
+                              type: file.type || 'application/pdf',
+                              fileType: 'pdf',
+                              url: fileUrl,
+                              previewUrl: fileUrl,
+                              originalUrl: fileUrl,
+                              pageCount: pageCount,
+                              pageRange: 'all',
+                              pageSelectionMode: 'all',
+                              selectedPages: Array.from({ length: pageCount }, (_, i) => i + 1),
+                              printablePages: pageCount,
+                              copies: 1,
+                              paperSize: 'A4',
+                              colorMode: 'B&W',
+                              printStyle: 'Single Sided',
+                              orientation: 'Auto',
+                              scaling: 'Fit to page',
+                              scalingMode: 'default',
+                              paperType: 'Plain Paper',
+                              printQuality: 'Normal',
+                              collation: 'Collated',
+                              photoCollage: 'Original',
+                              sheetsCount: pageCount,
+                              physicalSheets: pageCount,
+                              ratePerPage: 3.0,
+                              subtotal: 3.0 * pageCount,
+                              totalPrice: 3.0 * pageCount,
+                            };
+
+                            let finalDoc = docItem;
+                            try {
+                              const { updatedDoc } = await analyzePdfDocument(docItem, file);
+                              finalDoc = updatedDoc;
+                            } catch (err) {
+                              console.warn('PDF layout detection skipped:', err);
+                            }
+
+                            docs.push(finalDoc);
+                          } else {
+                            docs.push({
+                              id: `doc-${Date.now()}-${idx}`,
+                              name: file.name,
+                              size: file.size,
+                              type: file.type || 'application/octet-stream',
+                              fileType: isImg ? 'image' : 'document',
+                              url: fileUrl,
+                              previewUrl: isImg ? fileUrl : undefined,
+                              pageCount: 1,
+                              pageRange: 'all',
+                              printablePages: 1,
+                              copies: 1,
+                              paperSize: 'A4',
+                              colorMode: isImg ? 'Colour' : 'B&W',
+                              printStyle: 'Single Sided',
+                              orientation: 'Auto',
+                              scaling: 'Fit to page',
+                              paperType: 'Plain Paper',
+                              collation: 'Collated',
+                              photoCollage: 'Original',
+                              sheetsCount: 1,
+                              ratePerPage: isImg ? 8.0 : 3.0,
+                              totalPrice: isImg ? 8.0 : 3.0,
+                            });
+                          }
+                        }
+                        handleFilesUploaded(docs);
+                      }
+                    }}
+                    className="hidden"
+                  />
+                </label>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 shrink-0">
-              <label className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-400 hover:to-amber-400 text-white rounded-full text-xs font-black cursor-pointer shadow-md shadow-orange-500/20 transition active:scale-95 shrink-0">
-                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span>Add document</span>
-                <input
-                  type="file"
-                  multiple
-                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png,.zip"
-                  onChange={async (e) => {
-                    if (e.target.files && e.target.files.length > 0) {
-                      const files: File[] = Array.from(e.target.files);
-                      const docs: DocumentItem[] = [];
-
-                      for (let idx = 0; idx < files.length; idx++) {
-                        const file = files[idx];
-                        const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
-                        const isImg = file.type.startsWith('image/');
-                        const fileUrl = URL.createObjectURL(file);
-
-                        if (isPdf) {
-                          const pdfMeta = await detectPdfMetadata(file);
-                          const pageCount = pdfMeta.pageCount;
-                          const docItem: DocumentItem = {
-                            id: `doc-${Date.now()}-${idx}`,
-                            name: file.name,
-                            size: file.size,
-                            type: file.type || 'application/pdf',
-                            fileType: 'pdf',
-                            url: fileUrl,
-                            previewUrl: fileUrl,
-                            originalUrl: fileUrl,
-                            pageCount: pageCount,
-                            pageRange: 'all',
-                            pageSelectionMode: 'all',
-                            selectedPages: Array.from({ length: pageCount }, (_, i) => i + 1),
-                            printablePages: pageCount,
-                            copies: 1,
-                            paperSize: 'A4',
-                            colorMode: 'B&W',
-                            printStyle: 'Single Sided',
-                            orientation: 'Auto',
-                            scaling: 'Fit to page',
-                            scalingMode: 'default',
-                            paperType: 'Plain Paper',
-                            printQuality: 'Normal',
-                            collation: 'Collated',
-                            photoCollage: 'Original',
-                            sheetsCount: pageCount,
-                            physicalSheets: pageCount,
-                            ratePerPage: 3.0,
-                            subtotal: 3.0 * pageCount,
-                            totalPrice: 3.0 * pageCount,
-                          };
-
-                          let finalDoc = docItem;
-                          try {
-                            const { updatedDoc } = await analyzePdfDocument(docItem, file);
-                            finalDoc = updatedDoc;
-                          } catch (err) {
-                            console.warn('PDF layout detection skipped:', err);
-                          }
-
-                          docs.push(finalDoc);
-                        } else {
-                          docs.push({
-                            id: `doc-${Date.now()}-${idx}`,
-                            name: file.name,
-                            size: file.size,
-                            type: file.type || 'application/octet-stream',
-                            fileType: isImg ? 'image' : 'document',
-                            url: fileUrl,
-                            previewUrl: isImg ? fileUrl : undefined,
-                            pageCount: 1,
-                            pageRange: 'all',
-                            printablePages: 1,
-                            copies: 1,
-                            paperSize: 'A4',
-                            colorMode: isImg ? 'Colour' : 'B&W',
-                            printStyle: 'Single Sided',
-                            orientation: 'Auto',
-                            scaling: 'Fit to page',
-                            paperType: 'Plain Paper',
-                            collation: 'Collated',
-                            photoCollage: 'Original',
-                            sheetsCount: 1,
-                            ratePerPage: isImg ? 8.0 : 3.0,
-                            totalPrice: isImg ? 8.0 : 3.0,
-                          });
-                        }
-                      }
-                      handleFilesUploaded(docs);
-                    }
-                  }}
-                  className="hidden"
-                />
-              </label>
-            </div>
-          </div>
+          )}
 
           {/* List of Documents - Only shown for PDF/other documents; hidden for Image workspace or Aadhaar workspace */}
           {!isImageSession && !isAadhaarSession && (

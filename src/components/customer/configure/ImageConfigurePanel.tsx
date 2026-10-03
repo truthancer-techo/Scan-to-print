@@ -1115,8 +1115,8 @@ export const ImageConfigurePanel: React.FC<ImageConfigurePanelProps> = ({
         <div className="font-extrabold text-xs sm:text-sm text-slate-200 group-hover:text-white">
           Tap or drag images here
         </div>
-        <p className="text-[11px] text-slate-400">
-          JPG, PNG, WEBP (Multiple allowed, up to 25MB)
+        <p className="text-[11px] text-slate-400 tracking-wide">
+          JPG, PNG, WEBP (Multiple allowed, up to 50MB)
         </p>
       </div>
 

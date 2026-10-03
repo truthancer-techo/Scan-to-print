@@ -7,7 +7,7 @@ import {
   Eye,
   Image as ImageIcon,
   X,
-  RotateCcw,
+  Trash2,
 } from 'lucide-react';
 import { DocumentItem, PricingRule, ColorMode } from '../../../types';
 import { calculateDocumentPricing } from '../../../utils/pricing';
@@ -81,6 +81,9 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
   // Current uploaded images list
   const currentImages = documents.length > 0 ? documents : (doc.previewUrl || doc.url ? [doc] : []);
 
+  // Natural aspect ratio for each uploaded image (width / height) so crop border matches exact image dimensions
+  const [imageRatios, setImageRatios] = useState<{ [key: number]: number }>({});
+
   // Per-image configurations: index 0 (Front) and index 1 (Back)
   const [slots, setSlots] = useState<{ [key: number]: AadhaarSlotData }>({
     0: { rotation: 0, zoom: 100, panX: 0, panY: 0, crop: { top: 0, bottom: 0, left: 0, right: 0 }, isCropping: false },
@@ -109,6 +112,23 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
   activeSlotRef.current = activeSlot;
   const activeSlotIndexRef = useRef(activeSlotIndex);
   activeSlotIndexRef.current = activeSlotIndex;
+
+  // Auto-detect image aspect ratios as soon as URLs are available
+  useEffect(() => {
+    [0, 1].forEach((idx) => {
+      const url = currentImages[idx]?.previewUrl || currentImages[idx]?.url;
+      if (url && !imageRatios[idx]) {
+        const testImg = new window.Image();
+        testImg.onload = () => {
+          if (testImg.naturalWidth && testImg.naturalHeight) {
+            const r = testImg.naturalWidth / testImg.naturalHeight;
+            setImageRatios((prev) => (prev[idx] === r ? prev : { ...prev, [idx]: r }));
+          }
+        };
+        testImg.src = url;
+      }
+    });
+  }, [currentImages]);
 
   // Sync activeSlotIndex with selectedDocIndex from props if changed externally
   useEffect(() => {
@@ -300,12 +320,21 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
             const currentCrop = activeSlot.crop || { top: 0, bottom: 0, left: 0, right: 0 };
             const newCrop = { ...currentCrop };
 
+            const rot = activeSlot.rotation || 0;
+            const cx = (rect.left + rect.right) / 2;
+            const cy = (rect.top + rect.bottom) / 2;
             const unrotatedW = targetBox.offsetWidth || rect.width;
             const unrotatedH = targetBox.offsetHeight || rect.height;
 
             if (unrotatedW > 0 && unrotatedH > 0) {
-              const localX = clientX - rect.left;
-              const localY = clientY - rect.top;
+              const scale = ((activeSlot.zoom || 100) / 100) || 1;
+              const rad = (-rot * Math.PI) / 180;
+              const dx = (clientX - cx) / scale;
+              const dy = (clientY - cy) / scale;
+              const localDx = dx * Math.cos(rad) - dy * Math.sin(rad);
+              const localDy = dx * Math.sin(rad) + dy * Math.cos(rad);
+              const localX = localDx + unrotatedW / 2;
+              const localY = localDy + unrotatedH / 2;
 
               if (draggingHandle.includes('top')) {
                 const topPct = Math.max(0, Math.min(85 - (currentCrop.bottom || 0), (localY / unrotatedH) * 100));
@@ -379,10 +408,6 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
     updateActiveSlot({ isCropping: !activeSlot.isCropping });
   };
 
-  const handleResetCrop = () => {
-    updateActiveSlot({ crop: { top: 0, bottom: 0, left: 0, right: 0 } });
-  };
-
   const handleCropHandlePointerDown = (e: React.PointerEvent, handle: CropHandle) => {
     e.preventDefault();
     e.stopPropagation();
@@ -426,12 +451,32 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
     }
   };
 
+  const handleRemoveActiveImage = () => {
+    const currentImg = currentImages[activeSlotIndex];
+    if (!currentImg) return;
+
+    const targetIndex =
+      documents.length > 0
+        ? documents.findIndex((d) => d.id === currentImg.id)
+        : activeSlotIndex;
+
+    if (targetIndex !== -1 && onRemoveDoc) {
+      onRemoveDoc(targetIndex);
+      setActiveSlotIndex(0);
+    } else if (onResetAll && currentImages.length <= 1) {
+      onResetAll();
+    }
+  };
+
   const handleNewFiles = async (fileList: FileList | null) => {
     if (!fileList || fileList.length === 0) return;
     const newDocs: DocumentItem[] = [];
 
     for (let i = 0; i < fileList.length; i++) {
       const file = fileList[i];
+      if (file.size > 50 * 1024 * 1024) {
+        continue;
+      }
       const dataUrl = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
@@ -485,12 +530,6 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
   const currentColor = doc.colorMode || 'Colour';
   const currentCopies = doc.copies || 1;
   const hasMultipleImages = currentImages.length > 1;
-
-  const hasAnyCrop =
-    (activeSlot.crop?.top || 0) > 0 ||
-    (activeSlot.crop?.bottom || 0) > 0 ||
-    (activeSlot.crop?.left || 0) > 0 ||
-    (activeSlot.crop?.right || 0) > 0;
 
   return (
     <div className="bg-[#0b162d] rounded-3xl p-4 sm:p-6 border border-blue-900/50 shadow-xl shadow-black/40 space-y-6">
@@ -548,8 +587,8 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
         <div className="font-extrabold text-xs sm:text-sm text-slate-200 group-hover:text-white">
           Tap or drag images here
         </div>
-        <p className="text-[11px] text-slate-400">
-          JPG, PNG, WEBP (Multiple allowed, up to 25MB)
+        <p className="text-[11px] text-slate-400 tracking-wide">
+          JPG, PNG, WEBP (Multiple allowed, up to 50MB)
         </p>
       </div>
 
@@ -668,16 +707,16 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
               <span>{activeSlot.isCropping ? 'Done Crop' : 'Crop'}</span>
             </button>
 
-            {/* Reset Crop Button (visible when cropped or cropping) */}
-            {hasAnyCrop && (
+            {/* Remove Selected Image Button */}
+            {currentImages.length > 0 && (
               <button
                 type="button"
-                onClick={handleResetCrop}
-                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700/60 text-xs font-bold transition active:scale-95 shadow-xs"
-                title="Reset Crop to Original Image"
+                onClick={handleRemoveActiveImage}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 border border-rose-800/50 text-xs font-bold transition active:scale-95 shadow-xs"
+                title="Remove selected image"
               >
-                <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
-                <span>Reset</span>
+                <Trash2 className="w-3.5 h-3.5 text-rose-400" />
+                <span>Remove</span>
               </button>
             )}
           </div>
@@ -714,14 +753,25 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
               const crop = s.crop || { top: 0, bottom: 0, left: 0, right: 0 };
               const isCardCropping = s.isCropping;
 
+              // Dynamically determine the base size matching the exact natural aspect ratio of the image!
+              // For portrait images, baseW is narrow and baseH is tall!
+              // For landscape images, baseW is wide and baseH is standard!
+              // The crop border will ALWAYS match the exact shape & size of the image!
+              const ratio = imageRatios[idx] || 1.586;
+              const maxW = 220;
+              const maxH = 150;
+
+              let baseW = maxW;
+              let baseH = Math.round(baseW / ratio);
+              if (baseH > maxH) {
+                baseH = maxH;
+                baseW = Math.round(baseH * ratio);
+              }
+
               // Exact cropped dimensions
               const cropW = Math.max(10, 100 - (crop.left || 0) - (crop.right || 0));
               const cropH = Math.max(10, 100 - (crop.top || 0) - (crop.bottom || 0));
               const hasAppliedCrop = (crop.top > 0 || crop.bottom > 0 || crop.left > 0 || crop.right > 0) && !isCardCropping;
-
-              // Base standard size for card on A4 canvas
-              const baseW = 215;
-              const baseH = 135;
 
               // Cropped box size shrinks to cropped area with zero ghost margins
               const visibleW = hasAppliedCrop ? Math.round((cropW / 100) * baseW) : baseW;
@@ -731,11 +781,7 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
                 <div
                   key={idx}
                   onPointerDown={(e) => handleCardPointerDown(e, idx)}
-                  className={`absolute flex items-center justify-center cursor-pointer select-none rounded-sm transition-shadow ${
-                    isSelected
-                      ? (hasMultipleImages ? 'ring-2 ring-blue-500 shadow-md ring-offset-1 ring-offset-white' : '')
-                      : 'hover:ring-1 hover:ring-slate-300 opacity-95'
-                  }`}
+                  className="absolute flex items-center justify-center cursor-pointer select-none"
                   style={{
                     left: '50%',
                     top: '50%',
@@ -755,7 +801,7 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
                       transformOrigin: 'center center',
                     }}
                   >
-                    {/* Visible Cropped Container with Zero Ghost Margins (Never cuts off on zoom!) */}
+                    {/* Visible Container: Exact shape & dimensions of the image */}
                     <div
                       className="relative overflow-hidden flex items-center justify-center select-none"
                       style={{
@@ -765,20 +811,26 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
                     >
                       <img
                         src={s.imageUrl}
-                        alt="Aadhaar Card"
-                        className="select-none pointer-events-none max-w-none max-h-none"
+                        alt="Document"
+                        onLoad={(e) => {
+                          const img = e.currentTarget;
+                          if (img.naturalWidth && img.naturalHeight) {
+                            const r = img.naturalWidth / img.naturalHeight;
+                            setImageRatios((prev) => (prev[idx] === r ? prev : { ...prev, [idx]: r }));
+                          }
+                        }}
+                        className="select-none pointer-events-none max-w-none max-h-none object-cover"
                         style={{
-                          position: 'absolute',
+                          position: hasAppliedCrop ? 'absolute' : 'relative',
                           width: hasAppliedCrop ? `${(100 / cropW) * 100}%` : '100%',
                           height: hasAppliedCrop ? `${(100 / cropH) * 100}%` : '100%',
                           left: hasAppliedCrop ? `-${(crop.left / cropW) * 100}%` : '0%',
                           top: hasAppliedCrop ? `-${(crop.top / cropH) * 100}%` : '0%',
-                          objectFit: 'contain',
                         }}
                       />
                     </div>
 
-                    {/* IN-PLACE CROP BOX OVERLAY (MATCHING SCREENSHOT) */}
+                    {/* IN-PLACE CROP BOX OVERLAY: EXACTLY MATCHES IMAGE SIZE & ASPECT RATIO */}
                     {isSelected && isCardCropping && (
                       <div
                         className="absolute pointer-events-none z-30 select-none"
@@ -789,7 +841,7 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
                           right: `${crop.right}%`,
                         }}
                       >
-                        {/* Blue Rectangle Border */}
+                        {/* Blue Rectangle Border strictly hugging the image */}
                         <div className="absolute inset-0 border-2 border-blue-500 pointer-events-none" />
 
                         {/* Diagonal 'X' Cross Lines */}
@@ -798,7 +850,7 @@ export const AadhaarConfigurePanel: React.FC<AadhaarConfigurePanelProps> = ({
                           <line x1="100%" y1="0%" x2="0%" y2="100%" stroke="#3b82f6" strokeWidth="1.5" />
                         </svg>
 
-                        {/* 8 Square Points: White squares with blue border */}
+                        {/* 8 Square Points: White squares with blue border strictly on image edges */}
                         {CROP_HANDLES.map((handle) => (
                           <div
                             key={handle.id}
